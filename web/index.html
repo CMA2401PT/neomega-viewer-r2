@@ -61,19 +61,19 @@
       <label
         >渲染分辨率<select id="resolution">
           <option value="native">屏幕原生</option>
+          <option value="2">窗口尺寸 2×</option>
+          <option value="1.5">窗口尺寸 1.5×</option>
           <option value="1">窗口尺寸 1×</option>
           <option value="0.75">窗口尺寸 0.75×</option>
           <option value="0.5">窗口尺寸 0.5×</option>
         </select></label
       >
-      <label
-        >每像素采样<select id="samples">
-          <option value="1">1 条射线</option>
-          <option value="2">2 条射线</option>
-          <option value="4">4 条射线</option>
-        </select></label
-      >
-      <p class="hint">增加采样可以减轻边缘锯齿，也会增加渲染开销。</p>
+      <p class="hint">
+        画面清晰度主要取决于实际像素数。屏幕原生按系统缩放比例渲染；高于 1× 时先按更多像素渲染再缩小显示，边缘更细腻，开销随像素数增长。
+      </p>
+      <label>阴影<input id="shadows" type="checkbox" checked /></label>
+      <label>太阳运动<input id="sun-motion" type="checkbox" checked /></label>
+      <p class="hint">阴影为每个像素向太阳追踪一条射线，开销较大。太阳运动时画面每帧重绘。</p>
       <label
         >移动速度<select id="speed">
           <option value="16">16 方块 / 秒</option>

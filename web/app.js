@@ -11,8 +11,9 @@ const settings = {
   nearRadius: 8,
   farRadius: 48,
   resolution: "native",
-  samples: 1,
   speed: 32,
+  shadows: true,
+  sunMotion: true,
   ...JSON.parse(localStorage.getItem("neomega-r2-settings") || "{}"),
 };
 const controls = new FlightControls(canvas, camera);
@@ -50,15 +51,32 @@ for (const [id, key] of [
   ["near-radius", "nearRadius"],
   ["far-radius", "farRadius"],
   ["resolution", "resolution"],
-  ["samples", "samples"],
   ["speed", "speed"],
+  ["shadows", "shadows"],
+  ["sun-motion", "sunMotion"],
 ]) {
-  element(id).value = String(settings[key]);
-  element(id).addEventListener("change", () => {
-    settings[key] =
-      key === "resolution" ? element(id).value : Number(element(id).value);
+  const input = element(id),
+    toggle = input.type === "checkbox";
+  if (toggle) input.checked = settings[key];
+  else input.value = String(settings[key]);
+  input.addEventListener("change", () => {
+    settings[key] = toggle
+      ? input.checked
+      : key === "resolution"
+        ? input.value
+        : Number(input.value);
     setSettings();
   });
+}
+// 原生倍数随系统缩放变化：Windows 100% 缩放为 1×，Mac 的 Retina 屏约为 2×。
+element("resolution").options[0].textContent =
+  `屏幕原生（${+devicePixelRatio.toFixed(2)}×）`;
+/** 临时的太阳轨迹：90 秒内从东方升到西方再回到东方，始终在地平线以上；关闭运动时停在上午的位置。
+ * @param {number} seconds
+ */
+function sunDirection(seconds) {
+  const angle = Math.PI * (0.12 + 0.76 * (settings.sunMotion ? (seconds / 90) % 1 : 0.3));
+  return [Math.cos(angle), Math.sin(angle), 0.3];
 }
 setSettings();
 async function useWorld(info) {
@@ -147,13 +165,15 @@ function frame(now) {
         : Number(settings.resolution),
     width = Math.round(innerWidth * scale),
     height = Math.round(innerHeight * scale),
+    sun = sunDirection(now / 1000),
     state = JSON.stringify([
       camera.position,
       camera.yaw,
       camera.pitch,
       width,
       height,
-      settings.samples,
+      settings.shadows,
+      sun,
       renderer.version,
     ]);
   // 画面由上一帧保留（preserveDrawingBuffer），静止时 GPU 可以空闲。
@@ -165,8 +185,9 @@ function frame(now) {
     renderer.draw(camera, {
       width,
       height,
-      samples: settings.samples,
       time: now / 1000,
+      shadows: settings.shadows,
+      sun,
     });
     // 帧率只统计连续绘制之间的间隔，静止后的第一帧不计入。
     if (now - drawnAt < 250) frames.push(now - drawnAt);
@@ -191,7 +212,7 @@ function frame(now) {
         ? `静止 · ${width}×${height}`
         : `${Math.round(1000 / interval)} FPS · ${width}×${height}`;
     element("details").textContent =
-      `${world.name}\n${world.path}\n\n近景半径：${settings.nearRadius} 区块\n远景半径：${settings.farRadius} 区块，覆盖 ${settings.farRadius * 32}×${settings.farRadius * 32}×512 方块\n静态模型 section：${stats.sections}\n已发布区域：${stats.loaded}/${stats.wanted}\n待更新区域：${stats.pending} · 失败：${stats.failed}\n特殊对象：${stats.objects}\n累计传输：${(stats.bytes / 1024 ** 2).toFixed(1)} MiB\n区域显存已用：${(stats.usedBytes / 1024 ** 2).toFixed(1)} MiB\nGPU 纹理分配：${(renderer.textureBytes / 1024 ** 2).toFixed(1)} MiB\nGPU 中位数：${median?.toFixed(2) || "…"} ms\n实际像素：${width}×${height} · 每像素 ${settings.samples} 条射线\n\n仅支持 Java 主世界。含水附加层与更多 NBT 外观尚未接入。`;
+      `${world.name}\n${world.path}\n\n近景半径：${settings.nearRadius} 区块\n远景半径：${settings.farRadius} 区块，覆盖 ${settings.farRadius * 32}×${settings.farRadius * 32}×512 方块\n静态模型 section：${stats.sections}\n已发布区域：${stats.loaded}/${stats.wanted}\n待更新区域：${stats.pending} · 失败：${stats.failed}\n特殊对象：${stats.objects}\n累计传输：${(stats.bytes / 1024 ** 2).toFixed(1)} MiB\n区域显存已用：${(stats.usedBytes / 1024 ** 2).toFixed(1)} MiB\nGPU 纹理分配：${(renderer.textureBytes / 1024 ** 2).toFixed(1)} MiB\nGPU 中位数：${median?.toFixed(2) || "…"} ms\n实际像素：${width}×${height}\n\n仅支持 Java 主世界。含水附加层与更多 NBT 外观尚未接入。`;
     statusAt = now;
   }
 }
