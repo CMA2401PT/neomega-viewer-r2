@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <title>neOmega Viewer R2</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <canvas id="view" tabindex="0" aria-label="三维存档视图"></canvas>
+    <div id="empty">
+      <h1>neOmega Viewer R2</h1>
+      <p>打开 Java 存档开始浏览</p>
+      <button id="open-empty" class="primary">打开存档</button>
+    </div>
+    <header>
+      <span class="brand">neOmega <b>R2</b></span
+      ><span id="world-name">未打开存档</span><span id="loading"></span>
+    </header>
+    <footer>
+      <button id="open-world">打开存档</button
+      ><button id="settings-open">设置</button
+      ><button id="jump-open">坐标</button
+      ><button id="info-open">场景信息</button
+      ><button id="close-world">关闭存档</button><span id="position"></span
+      ><span id="fps"></span>
+    </footer>
+    <div id="notice" role="status" hidden></div>
+    <dialog id="settings">
+      <form method="dialog">
+        <h2>显示设置</h2>
+        <button class="close" aria-label="关闭">×</button>
+      </form>
+      <label
+        >近景视距 <output id="near-value"></output
+        ><input
+          id="near-radius"
+          type="range"
+          min="1"
+          max="16"
+          step="1"
+          value="8"
+      /></label>
+      <p class="hint">范围内显示完整静态模型和已支持的特殊对象。</p>
+      <label
+        >远景视距 <output id="far-value"></output
+        ><input
+          id="far-radius"
+          type="range"
+          min="16"
+          max="48"
+          step="8"
+          value="48"
+      /></label>
+      <p class="hint">
+        范围外的区域会卸载；远景使用简化模型，完整立方体保留贴图。
+      </p>
+      <label
+        >渲染分辨率<select id="resolution">
+          <option value="native">屏幕原生</option>
+          <option value="1">窗口尺寸 1×</option>
+          <option value="0.75">窗口尺寸 0.75×</option>
+          <option value="0.5">窗口尺寸 0.5×</option>
+        </select></label
+      >
+      <label
+        >每像素采样<select id="samples">
+          <option value="1">1 条射线</option>
+          <option value="2">2 条射线</option>
+          <option value="4">4 条射线</option>
+        </select></label
+      >
+      <p class="hint">增加采样可以减轻边缘锯齿，也会增加渲染开销。</p>
+      <label
+        >移动速度<select id="speed">
+          <option value="16">16 方块 / 秒</option>
+          <option value="32" selected>32 方块 / 秒</option>
+          <option value="64">64 方块 / 秒</option>
+          <option value="128">128 方块 / 秒</option>
+        </select></label
+      >
+      <p class="hint">
+        拖动转向，WASD 移动，空格 / E 上升，Q 下降，Shift 加速。
+      </p>
+    </dialog>
+    <dialog id="files">
+      <form method="dialog">
+        <h2>打开 Java 存档</h2>
+        <button class="close" aria-label="关闭">×</button>
+      </form>
+      <div class="row">
+        <input
+          id="directory"
+          placeholder="存档或目录路径"
+          aria-label="目录路径"
+        /><button id="browse">浏览</button>
+      </div>
+      <div class="row">
+        <button id="parent">上级目录</button>
+        <div id="roots"></div>
+      </div>
+      <div id="file-list"></div>
+      <div class="row bottom">
+        <span id="file-message"></span
+        ><button id="open-directory" class="primary">打开当前存档目录</button>
+      </div>
+      <p class="hint">
+        请选择包含 level.dat 和 region 的 Java 主世界目录。存档以只读方式打开。
+      </p>
+    </dialog>
+    <dialog id="jump">
+      <form id="jump-form">
+        <h2>移动到坐标</h2>
+        <button type="button" class="close" id="jump-close" aria-label="关闭">
+          ×
+        </button>
+        <div class="coordinates">
+          <label>X<input id="jump-x" type="number" step="any" required /></label
+          ><label
+            >Y<input id="jump-y" type="number" step="any" required /></label
+          ><label
+            >Z<input id="jump-z" type="number" step="any" required
+          /></label>
+        </div>
+        <button class="primary">前往</button>
+      </form>
+    </dialog>
+    <dialog id="info">
+      <form method="dialog">
+        <h2>场景信息</h2>
+        <button class="close" aria-label="关闭">×</button>
+      </form>
+      <pre id="details"></pre>
+    </dialog>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
