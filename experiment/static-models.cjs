@@ -25,6 +25,8 @@ fs.mkdirSync(out, { recursive: true });
     page.on("pageerror", (e) => errors.push(String(e)));
     await page.goto(process.env.R2_URL || "http://127.0.0.1:2416");
     await page.waitForFunction(() => globalThis.viewerR2);
+    // 应用静止时不重画；实验需要连续的 GPU 时间与帧间隔。
+    await page.evaluate(() => (viewerR2.continuous = true));
     const change = async (id, value) =>
       page.locator("#" + id).evaluate((el, value) => {
         el.value = String(value);

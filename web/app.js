@@ -28,7 +28,12 @@ let renderer,
   epoch = 0,
   last = performance.now(),
   statusAt = 0,
-  frames = [];
+  frames = [],
+  // 上一次绘制时的相机、尺寸、设置与场景版本；不变且没有可见动画时跳过绘制。
+  drawn = "",
+  drawnAt = 0,
+  // 性能实验需要每帧都绘制，才能连续采样 GPU 时间。
+  continuous = false;
 const showError = (message) => {
   if (opening) return;
   element("notice").textContent = message;
@@ -131,8 +136,6 @@ element("close-world").onclick = async () => {
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000);
-  frames.push(now - last);
-  if (frames.length > 240) frames.shift();
   last = now;
   if (!world.loaded || !stream) return;
   controls.update(dt, Number(settings.speed));
@@ -143,13 +146,34 @@ function frame(now) {
         ? devicePixelRatio
         : Number(settings.resolution),
     width = Math.round(innerWidth * scale),
-    height = Math.round(innerHeight * scale);
-  renderer.draw(camera, {
-    width,
-    height,
-    samples: settings.samples,
-    time: now / 1000,
-  });
+    height = Math.round(innerHeight * scale),
+    state = JSON.stringify([
+      camera.position,
+      camera.yaw,
+      camera.pitch,
+      width,
+      height,
+      settings.samples,
+      renderer.version,
+    ]);
+  // 画面由上一帧保留（preserveDrawingBuffer），静止时 GPU 可以空闲。
+  if (
+    continuous ||
+    state !== drawn ||
+    renderer.animating(camera, { width, height })
+  ) {
+    renderer.draw(camera, {
+      width,
+      height,
+      samples: settings.samples,
+      time: now / 1000,
+    });
+    // 帧率只统计连续绘制之间的间隔，静止后的第一帧不计入。
+    if (now - drawnAt < 250) frames.push(now - drawnAt);
+    if (frames.length > 240) frames.shift();
+    drawn = state;
+    drawnAt = now;
+  }
   if (now - statusAt > 300) {
     const stats = stream.stats,
       times = renderer.times.sort((a, b) => a - b),
@@ -163,7 +187,9 @@ function frame(now) {
       .map((v) => v.toFixed(1))
       .join(" / ");
     element("fps").textContent =
-      `${Math.round(1000 / interval)} FPS · ${width}×${height}`;
+      now - drawnAt > 300 || !frames.length
+        ? `静止 · ${width}×${height}`
+        : `${Math.round(1000 / interval)} FPS · ${width}×${height}`;
     element("details").textContent =
       `${world.name}\n${world.path}\n\n近景半径：${settings.nearRadius} 区块\n远景半径：${settings.farRadius} 区块，覆盖 ${settings.farRadius * 32}×${settings.farRadius * 32}×512 方块\n静态模型 section：${stats.sections}\n已发布区域：${stats.loaded}/${stats.wanted}\n待更新区域：${stats.pending} · 失败：${stats.failed}\n特殊对象：${stats.objects}\n累计传输：${(stats.bytes / 1024 ** 2).toFixed(1)} MiB\n区域显存已用：${(stats.usedBytes / 1024 ** 2).toFixed(1)} MiB\nGPU 纹理分配：${(renderer.textureBytes / 1024 ** 2).toFixed(1)} MiB\nGPU 中位数：${median?.toFixed(2) || "…"} ms\n实际像素：${width}×${height} · 每像素 ${settings.samples} 条射线\n\n仅支持 Java 主世界。含水附加层与更多 NBT 外观尚未接入。`;
     statusAt = now;
@@ -192,6 +218,10 @@ globalThis.viewerR2 = {
     camera.yaw = Math.atan2(d[0], -d[2]);
     camera.pitch = Math.asin(d[1] / Math.hypot(...d));
     renderer?.resetTiming();
+  },
+  /** 打开后每帧都绘制，供性能实验连续采样。 */
+  set continuous(value) {
+    continuous = value;
   },
   openWorld,
   close: () => element("close-world").click(),

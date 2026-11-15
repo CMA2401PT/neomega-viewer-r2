@@ -25,6 +25,8 @@ fs.mkdirSync(out, { recursive: true });
     page.on("pageerror", (error) => errors.push(String(error)));
     await page.goto(process.env.R2_URL || "http://127.0.0.1:2413");
     await page.waitForFunction(() => globalThis.viewerR2);
+    // 应用静止时不重画；实验需要连续的 GPU 时间与帧间隔。
+    await page.evaluate(() => (viewerR2.continuous = true));
     await page.evaluate(
       (path) => viewerR2.openWorld(path),
       process.env.R2_WORLD || "/Users/dai/Downloads/新天堂",

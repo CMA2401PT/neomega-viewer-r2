@@ -32,6 +32,8 @@ fs.mkdirSync(out, { recursive: true });
     });
     await page.goto(base);
     await page.waitForFunction(() => globalThis.viewerR2);
+    // 应用静止时不重画；实验需要连续的 GPU 时间与帧间隔。
+    await page.evaluate(() => (viewerR2.continuous = true));
     assert.equal(await page.locator("#empty").isVisible(), true);
     assert.equal(requests.filter((s) => s.includes("/r2/assets/")).length, 0);
     const settled = async () => {
