@@ -137,7 +137,7 @@ fs.mkdirSync(out, { recursive: true });
     await settled();
     result.moveRequests =
       requests.filter((s) => s.includes("/api/world/region")).length - before;
-    assert(result.moveRequests <= 24, "移动重载了完整远景");
+    assert(result.moveRequests <= 28, "移动重载了完整远景");
     await stage("moved");
     await page.evaluate(() =>
       viewerR2.setCamera([1280, 271, 1280], [1120, 185, 1080]),
@@ -161,12 +161,11 @@ fs.mkdirSync(out, { recursive: true });
       viewerR2.setCamera([1280, 78, 1280], [1210, 70, 1200]),
     );
     await settled();
-    const near8 = (await page.evaluate(() => viewerR2.state)).stream
-      .nearSections;
+    const near8 = (await page.evaluate(() => viewerR2.state)).stream.sections;
     await change("near-radius", 16);
     await settled();
     assert(
-      (await page.evaluate(() => viewerR2.state)).stream.nearSections > near8,
+      (await page.evaluate(() => viewerR2.state)).stream.sections === near8,
     );
     assert.equal(
       requests.filter((s) => s.includes("/api/world/region")).length,
@@ -193,8 +192,7 @@ fs.mkdirSync(out, { recursive: true });
     await page.evaluate((path) => viewerR2.openWorld(path), fixture);
     await settled();
     const switched = await page.evaluate(() => viewerR2.state);
-    assert.equal(switched.stream.nearSections, 1);
-    assert.equal(switched.stream.farSections, 0);
+    assert.equal(switched.stream.sections, 1);
     assert.equal(switched.stream.objects, 1);
     await stage("switch-during-load");
     assert.deepEqual(result.errors, []);

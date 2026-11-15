@@ -42,7 +42,9 @@
           step="1"
           value="8"
       /></label>
-      <p class="hint">范围内显示完整静态模型和已支持的特殊对象。</p>
+      <p class="hint">
+        范围内启用已支持的特效与方块实体外观；静态模型不受此设置影响。
+      </p>
       <label
         >远景视距 <output id="far-value"></output
         ><input
@@ -54,7 +56,7 @@
           value="48"
       /></label>
       <p class="hint">
-        范围外的区域会卸载；远景使用简化模型，完整立方体保留贴图。
+        控制全部静态模型的可见范围；栏杆、楼梯、花等在范围内保持完整形状。
       </p>
       <label
         >渲染分辨率<select id="resolution">

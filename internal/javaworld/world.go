@@ -26,34 +26,33 @@ import (
 type World struct {
 	source  *java.World
 	mu      sync.Mutex
-	mapping map[string][2]uint32
+	mapping map[string]uint32
 }
 
 // StateMapping 在应用启动时共享建立状态映射，区域请求仅转换调色板条目。
 // 含水状态目前只发布方块本体，附加水层尚未接入。
-func StateMapping(catalog *r2.Catalog) map[string][2]uint32 {
-	mapping := make(map[string][2]uint32)
+func StateMapping(catalog *r2.Catalog) map[string]uint32 {
+	mapping := make(map[string]uint32)
 	for state := range blocks.JavaCompatibleStates() {
 		normalized, ok := blocks.NormalizeSingleLayer(state)
 		if !ok {
 			continue
 		}
-		near, ok := catalog.States[string(normalized)]
+		model, ok := catalog.States[string(normalized)]
 		if !ok {
 			continue
 		}
-		ids := [2]uint32{near, catalog.FarStates[string(normalized)]}
-		mapping[string(state)] = ids
+		mapping[string(state)] = model
 		for _, value := range []string{"false", "true"} {
 			variant := ir.IRBlock(state.NameWithNameSpace() + " " + string(state.States().Set("waterlogged", value))).Tidy()
-			mapping[string(variant)] = ids
+			mapping[string(variant)] = model
 		}
 	}
 	return mapping
 }
 
 // OpenWorld 只读打开 Java 主世界，文件句柄由当前会话独占。
-func OpenWorld(path string, mapping map[string][2]uint32) (*World, error) {
+func OpenWorld(path string, mapping map[string]uint32) (*World, error) {
 	if filepath.Base(path) == "level.dat" {
 		path = filepath.Dir(path)
 	}
@@ -71,10 +70,10 @@ func OpenWorld(path string, mapping map[string][2]uint32) (*World, error) {
 }
 func (w *World) Close() error { return w.source.Close() }
 
-// Region 返回 8×8 区块列的压缩索引，调色板同时携带近景与远景模型编号。
+// Region 返回 8×8 区块列的压缩索引，每个调色板条目只携带一个共享静态模型编号。
 // 坐标、位宽、调色板长度和压缩字长度均为小端 uint32；坐标按 int32 解释。
 func (w *World) Region(ctx context.Context, rx, rz int) ([]byte, error) {
-	words := []uint32{0x32504c54, 0, 0}
+	words := []uint32{0x33504c54, 0, 0}
 	for x := rx * 8; x < (rx+1)*8; x++ {
 		for z := rz * 8; z < (rz+1)*8; z++ {
 			if err := ctx.Err(); err != nil {
@@ -114,16 +113,14 @@ func (w *World) Region(ctx context.Context, rx, rz int) ([]byte, error) {
 				}
 				p := section.Blocks
 				palette := p.GetUsedPalette()
-				mapped := make([]uint32, len(palette)*2)
+				mapped := make([]uint32, len(palette))
 				nonAir := false
 				for i, state := range palette {
-					ids, ok := w.mapping[string(state)]
-					id := ids[0]
+					id, ok := w.mapping[string(state)]
 					if !ok {
 						words[2]++
 					}
-					mapped[i*2] = id
-					mapped[i*2+1] = ids[1]
+					mapped[i] = id
 					nonAir = nonAir || id != 0
 				}
 				if !nonAir {

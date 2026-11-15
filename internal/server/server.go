@@ -42,7 +42,7 @@ type Server struct {
 	openMu   sync.Mutex
 	current  *session
 	revision uint64
-	mapping  map[string][2]uint32
+	mapping  map[string]uint32
 	workers  chan struct{}
 	Effects  effector.Registry
 	Actors   blockactor.Registry

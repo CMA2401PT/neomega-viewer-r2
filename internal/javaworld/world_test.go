@@ -54,19 +54,19 @@ func TestWorldPaletteTransport(t *testing.T) {
 		t.Fatal(err)
 	}
 	read := func(i int) uint32 { return binary.LittleEndian.Uint32(data[i*4:]) }
-	if read(0) != 0x32504c54 || read(1) != 1 || read(2) != 0 {
+	if read(0) != 0x33504c54 || read(1) != 1 || read(2) != 0 {
 		t.Fatalf("传输头错误：%x %d %d", read(0), read(1), read(2))
 	}
 	bits, count := read(6), read(7)
-	base := 9 + int(count)*2
+	base := 9 + int(count)
 	for _, sample := range []struct {
 		index int
 		state ir.IRBlock
 	}{{(1 << 8) | (3 << 4) | 2, stone}, {(15 << 8) | (13 << 4) | 14, leaves}, {0, "minecraft:air []"}} {
 		per := 32 / int(bits)
 		palette := (read(base+sample.index/per) >> uint(sample.index%per*int(bits))) & ((1 << bits) - 1)
-		got := read(9 + int(palette)*2)
-		want := world.mapping[string(sample.state)][0]
+		got := read(9 + int(palette))
+		want := world.mapping[string(sample.state)]
 		if got != want {
 			t.Fatalf("索引 %d 得到 %d，期望 %d", sample.index, got, want)
 		}

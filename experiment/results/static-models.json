@@ -1,0 +1,10 @@
+{
+  "fragmentsVisible": true,
+  "sameStaticPixels": true,
+  "windowEdge": {
+    "source": false,
+    "fragments": 2
+  },
+  "returnPixelsEqual": true,
+  "errors": []
+}

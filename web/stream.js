@@ -82,16 +82,15 @@ export class WorldStream {
     for (let z = origin[2] / 128; z < (origin[2] + side) / 128; z++)
       for (let x = origin[0] / 128; x < (origin[0] + side) / 128; x++)
         wanted.set(regionKey(x, z), { x, z, visible: true });
-    // 近景边界的模型可能伸出所在区域，因此保留其来源相邻区域的数据。
+    // 所有静态模型都可能越界；整个可见窗口保留一圈来源区域。
     for (const value of [...wanted.values()])
-      if (this.near(value.x, value.z))
-        for (let dz = -this.fragmentRadius; dz <= this.fragmentRadius; dz++)
-          for (let dx = -this.fragmentRadius; dx <= this.fragmentRadius; dx++) {
-            const x = value.x + dx,
-              z = value.z + dz,
-              key = regionKey(x, z);
-            if (!wanted.has(key)) wanted.set(key, { x, z, visible: false });
-          }
+      for (let dz = -this.fragmentRadius; dz <= this.fragmentRadius; dz++)
+        for (let dx = -this.fragmentRadius; dx <= this.fragmentRadius; dx++) {
+          const x = value.x + dx,
+            z = value.z + dz,
+            key = regionKey(x, z);
+          if (!wanted.has(key)) wanted.set(key, { x, z, visible: false });
+        }
     const dropped = [];
     for (const [key, entry] of this.entries)
       if (!wanted.has(key)) {
@@ -122,16 +121,15 @@ export class WorldStream {
         this.entries.set(key, entry);
       }
       const near = this.near(value.x, value.z);
-      if (entry.near || near || entry.visible !== value.visible)
-        this.dirty(entry);
+      if (entry.visible !== value.visible) this.dirty(entry);
       if (entry.visible && !value.visible) this.gpu.remove(key);
       entry.visible = value.visible;
       entry.near = near;
       entry.objectSignature = near ? center.join("/") + "/" + nearRadius : "";
       if (!near && entry.objectsLoaded) {
-        this.objects.removeRegion(key);
+        const changed = this.objects.removeRegion(key);
         entry.objectsLoaded = "";
-        this.dirtyNeighbors(entry.x, entry.z);
+        if (changed) this.dirtyNeighbors(entry.x, entry.z);
       }
     }
     this.pump();
@@ -173,8 +171,6 @@ export class WorldStream {
           request,
           x: entry.x,
           z: entry.z,
-          center: this.center,
-          radius: this.nearRadius,
           objects: this.objects.references(),
         });
       }
@@ -248,7 +244,11 @@ export class WorldStream {
         entry.objectSignature !== signature
       )
         return;
-      await this.objects.setRegion(entry.key, descriptors, this.registry);
+      const changed = await this.objects.setRegion(
+        entry.key,
+        descriptors,
+        this.registry,
+      );
       if (this.disposed) return;
       if (
         this.entries.get(entry.key) !== entry ||
@@ -259,7 +259,7 @@ export class WorldStream {
         return;
       }
       entry.objectsLoaded = signature;
-      this.dirtyNeighbors(entry.x, entry.z);
+      if (changed) this.dirtyNeighbors(entry.x, entry.z);
     } catch (error) {
       if (error.name !== "AbortError" && !this.disposed) {
         entry.failed = true;
@@ -277,8 +277,7 @@ export class WorldStream {
       const entry = this.entries.get(data.key);
       if (entry) {
         entry.state = "stored";
-        if (entry.near) this.dirtyNeighbors(entry.x, entry.z);
-        else this.dirty(entry);
+        this.dirtyNeighbors(entry.x, entry.z);
       }
     }
     if (data.type === "prepared") {
@@ -329,21 +328,25 @@ export class WorldStream {
     this.pump();
   }
   get stats() {
-    const entries = [...this.entries.values()].filter((e) => e.visible),
+    const all = [...this.entries.values()],
+      entries = all.filter((e) => e.visible),
       installed = [...this.gpu.regions.values()];
     return {
       wanted: entries.length,
       loaded: this.gpu.regions.size,
-      pending: entries.filter((e) => e.published !== e.version && !e.failed)
-        .length,
-      failed: entries.filter((e) => e.failed).length,
-      nearPending: entries.filter(
+      pending: all.filter(
+        (e) =>
+          !e.failed &&
+          (e.state !== "stored" || (e.visible && e.published !== e.version)),
+      ).length,
+      failed: all.filter((e) => e.failed).length,
+      nearPending: all.filter(
         (e) =>
           e.near &&
-          (e.published !== e.version || e.objectsLoaded !== e.objectSignature),
+          ((e.visible && e.published !== e.version) ||
+            e.objectsLoaded !== e.objectSignature),
       ).length,
-      nearSections: installed.reduce((n, e) => n + e.stats.nearSections, 0),
-      farSections: installed.reduce((n, e) => n + e.stats.farSections, 0),
+      sections: installed.reduce((n, e) => n + e.stats.sections, 0),
       bytes: this.bytes,
       usedBytes: this.gpu.allocator.used * 4,
       prepareMS: this.prepareMS,

@@ -155,16 +155,17 @@ function frame(now) {
       times = renderer.times.sort((a, b) => a - b),
       median = times[Math.floor(times.length / 2)],
       interval = frames.reduce((a, b) => a + b, 0) / frames.length;
-    element("loading").textContent = stats.pending
-      ? `近景准备 ${stats.nearPending} 区域 · 远景覆盖 ${stats.loaded}/${stats.wanted}`
-      : "已加载";
+    element("loading").textContent =
+      stats.pending || stats.nearPending
+        ? `近景对象准备 ${stats.nearPending} 区域 · 远景覆盖 ${stats.loaded}/${stats.wanted}`
+        : "已加载";
     element("position").textContent = camera.position
       .map((v) => v.toFixed(1))
       .join(" / ");
     element("fps").textContent =
       `${Math.round(1000 / interval)} FPS · ${width}×${height}`;
     element("details").textContent =
-      `${world.name}\n${world.path}\n\n近景半径：${settings.nearRadius} 区块\n远景半径：${settings.farRadius} 区块，覆盖 ${settings.farRadius * 32}×${settings.farRadius * 32}×512 方块\n精细静态 section：${stats.nearSections}\n简化 section：${stats.farSections}\n已发布区域：${stats.loaded}/${stats.wanted}\n待更新区域：${stats.pending} · 失败：${stats.failed}\n特殊对象：${stats.objects}\n累计传输：${(stats.bytes / 1024 ** 2).toFixed(1)} MiB\n区域显存已用：${(stats.usedBytes / 1024 ** 2).toFixed(1)} MiB\nGPU 纹理分配：${(renderer.textureBytes / 1024 ** 2).toFixed(1)} MiB\nGPU 中位数：${median?.toFixed(2) || "…"} ms\n实际像素：${width}×${height} · 每像素 ${settings.samples} 条射线\n\n仅支持 Java 主世界。含水附加层与更多 NBT 外观尚未接入。`;
+      `${world.name}\n${world.path}\n\n近景半径：${settings.nearRadius} 区块\n远景半径：${settings.farRadius} 区块，覆盖 ${settings.farRadius * 32}×${settings.farRadius * 32}×512 方块\n静态模型 section：${stats.sections}\n已发布区域：${stats.loaded}/${stats.wanted}\n待更新区域：${stats.pending} · 失败：${stats.failed}\n特殊对象：${stats.objects}\n累计传输：${(stats.bytes / 1024 ** 2).toFixed(1)} MiB\n区域显存已用：${(stats.usedBytes / 1024 ** 2).toFixed(1)} MiB\nGPU 纹理分配：${(renderer.textureBytes / 1024 ** 2).toFixed(1)} MiB\nGPU 中位数：${median?.toFixed(2) || "…"} ms\n实际像素：${width}×${height} · 每像素 ${settings.samples} 条射线\n\n仅支持 Java 主世界。含水附加层与更多 NBT 外观尚未接入。`;
     statusAt = now;
   }
 }
