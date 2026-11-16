@@ -148,7 +148,7 @@ export function createHUD({ settings, jump, changed }) {
         ? world.name
         : "未打开存档";
       element("info-path").textContent =
-        world.path || "从文件夹按钮打开 Java 存档。";
+        world.path || "内置海晶灯莫比乌斯环；从文件夹按钮打开 Java 存档。";
       for (const id of ["map-open", "close-world", "x", "y", "z"])
         element(id).disabled = !loaded;
       stopEditing();

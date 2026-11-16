@@ -76,19 +76,22 @@ func TestSessionAndNearObjectBoundary(t *testing.T) {
 		actors,
 	)
 	defer service.Close()
-	handler := service.Handler(fstest.MapFS{"index.html": {Data: []byte("空白欢迎页")}})
+	handler := service.Handler(fstest.MapFS{"index.html": {Data: []byte("场景页面")}})
 	request := func(method, url, body string) *httptest.ResponseRecorder {
 		t.Helper()
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(method, url, strings.NewReader(body)))
 		return response
 	}
-	if service.Info().Loaded {
-		t.Fatal("启动时不应打开世界")
+	if info := service.Info(); !info.Loaded || info.Scene == nil || info.Name != "Möbius" {
+		t.Fatal("启动时应加载 Möbius", info)
 	}
 	info, err := service.Open(path)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if info.Scene != nil {
+		t.Fatal("存档不应携带内置场景设置")
 	}
 	if info.Position != [3]float64{7, 42, -9} {
 		t.Fatalf("出生点错误：%v", info.Position)
@@ -259,5 +262,123 @@ func TestWorldChunks(t *testing.T) {
 	service.Close()
 	if request(reopened.ID).Code != 409 {
 		t.Fatal("关闭后仍接受占用表请求")
+	}
+}
+
+// 内置场景沿用区域协议与地图占用协议，关闭后只更换会话编号，不改变场景内容。
+func TestMobiusSession(t *testing.T) {
+	catalog, err := r2.OpenCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapping := javaworld.StateMapping(catalog)
+	service := New(mapping, nil, nil)
+	defer service.Close()
+	handler := service.Handler(fstest.MapFS{})
+	request := func(url string) *httptest.ResponseRecorder {
+		t.Helper()
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest("GET", url, nil))
+		if response.Code != 200 {
+			t.Fatal(response.Code, response.Body.String())
+		}
+		return response
+	}
+	var info Info
+	if err = json.Unmarshal(request("/api/world").Body.Bytes(), &info); err != nil {
+		t.Fatal(err)
+	}
+	if !info.Loaded || info.Name != "Möbius" || info.Scene == nil || info.Path != "" {
+		t.Fatalf("默认场景信息错误：%+v", info)
+	}
+	if info.Scene.Ocean != 64 || info.Scene.Camera.Position != info.Position || info.Scene.Time != 19 {
+		t.Fatalf("开场设置错误：%+v", info.Scene)
+	}
+	occupied := make(map[[2]int]bool)
+	chunks := request(fmt.Sprintf("/api/world/chunks?world=%d", info.ID)).Body.Bytes()
+	if len(chunks) == 0 || len(chunks)%136 != 0 {
+		t.Fatal("场景占用表为空或记录不完整")
+	}
+	for offset := 0; offset < len(chunks); offset += 136 {
+		rx := int(int32(binary.LittleEndian.Uint32(chunks[offset:])))
+		rz := int(int32(binary.LittleEndian.Uint32(chunks[offset+4:])))
+		for i := range 1024 {
+			if chunks[offset+8+(i>>3)]&(1<<(i&7)) != 0 {
+				occupied[[2]int{rx*32 + (i & 31), rz*32 + (i >> 5)}] = true
+			}
+		}
+	}
+	for _, position := range [][2]int{{-3, -1}, {-3, 0}, {2, -1}, {2, 0}} {
+		if !occupied[position] {
+			t.Fatalf("占用表缺少环所在区块 %v", position)
+		}
+	}
+	lanterns := 0
+	for rx := -1; rx <= 0; rx++ {
+		for rz := -1; rz <= 0; rz++ {
+			data := request(fmt.Sprintf(
+				"/api/world/region?world=%d&x=%d&z=%d",
+				info.ID,
+				rx,
+				rz,
+			)).Body.Bytes()
+			words := make([]uint32, len(data)/4)
+			if err = binary.Read(bytes.NewReader(data), binary.LittleEndian, words); err != nil {
+				t.Fatal(err)
+			}
+			if words[0] != 0x33504c54 || words[1] == 0 || words[2] != 0 {
+				t.Fatalf("区域头错误：%v", words[:3])
+			}
+			cursor := 3
+			for range words[1] {
+				x, y, z := int(int32(words[cursor])), int(int32(words[cursor+1])), int(int32(words[cursor+2]))
+				bits, count, length := words[cursor+3], int(words[cursor+4]), int(words[cursor+5])
+				cursor += 6
+				// 现有调色板存储直接读取传输索引，验证编码与 X-Z-Y 格子顺序兼容。
+				storage := &layer_storage.Palette[uint32]{
+					Level:         bits,
+					IdxsPerUint32: 32 / bits,
+					Mask:          (1 << bits) - 1,
+					Palette:       words[cursor : cursor+count],
+					Data:          words[cursor+count : cursor+count+length],
+				}
+				cursor += count + length
+				if !occupied[[2]int{x, z}] {
+					t.Fatalf("占用表未登记区域中的 section：%d %d %d", x, y, z)
+				}
+				for bx := range 16 {
+					for bz := range 16 {
+						for by := range 16 {
+							model := storage.Get(layer_storage.At(bx, by, bz))
+							if model == 0 {
+								continue
+							}
+							if model != mapping["minecraft:sea_lantern []"] {
+								t.Fatalf("出现海晶灯之外的模型：%d", model)
+							}
+							lanterns++
+						}
+					}
+				}
+			}
+			if cursor != len(words) {
+				t.Fatal("区域尾部有未解析数据")
+			}
+		}
+	}
+	if lanterns < 1000 {
+		t.Fatalf("环没有完整生成：%d 格", lanterns)
+	}
+	objects := request(fmt.Sprintf(
+		"/api/world/objects?world=%d&x=0&z=0&cx=0&cy=4&cz=0&radius=8",
+		info.ID,
+	))
+	if strings.TrimSpace(objects.Body.String()) != "[]" {
+		t.Fatal("内置场景应只有静态方块")
+	}
+	service.Close()
+	closed := service.Info()
+	if closed.ID <= info.ID || closed.Name != info.Name || *closed.Scene != *info.Scene {
+		t.Fatalf("关闭后没有恢复默认场景：%+v", closed)
 	}
 }

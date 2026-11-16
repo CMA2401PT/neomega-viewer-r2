@@ -1,4 +1,4 @@
-// 在真实 Chrome 中验证天空启动、近远景设置、移动复用、卸载、会话切换和活动对象。
+// 在真实 Chrome 中验证默认场景启动、近远景设置、移动复用、卸载、会话切换和活动对象。
 const { chromium } = require(
   process.env.PLAYWRIGHT_MODULE ||
     "/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules/playwright",
@@ -37,11 +37,11 @@ fs.mkdirSync(out, { recursive: true });
     // 应用静止时不重画；实验需要连续的 GPU 时间与帧间隔。
     await page.evaluate(() => (viewerR2.continuous = true));
     assert.equal(await page.locator("#view").isVisible(), true);
-    assert.equal(await page.locator("#map-open").isDisabled(), true);
+    assert.equal(await page.locator("#map-open").isDisabled(), false);
     assert.equal(await page.evaluate(() => viewerR2.state.error), 0);
     assert(
       requests.some((s) => s.includes("/r2/assets/")),
-      "空场景应初始化共享资源",
+      "默认场景应初始化共享资源",
     );
     const settled = async () => {
       await page.evaluate(
@@ -135,9 +135,9 @@ fs.mkdirSync(out, { recursive: true });
     assert.equal((await page.evaluate(() => viewerR2.state)).stream.wanted, 16);
     await stage("far-radius-16");
     await page.click("#close-world");
-    await page.waitForFunction(() => !viewerR2.state.world.loaded);
+    await page.waitForFunction(() => !!viewerR2.state.world.scene);
     assert.equal(await page.locator("#view").isVisible(), true);
-    assert.equal(await page.locator("#map-open").isDisabled(), true);
+    assert.equal(await page.locator("#map-open").isDisabled(), false);
     assert.equal(await page.evaluate(() => viewerR2.state.error), 0);
     await change("far-radius", 48);
     const start = Date.now();

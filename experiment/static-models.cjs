@@ -114,7 +114,7 @@ fs.mkdirSync(out, { recursive: true });
     assert.equal(await draw(), far, "移动返回后存在缺片或旧区域");
     result.returnPixelsEqual = true;
     await page.click("#close-world");
-    await page.waitForFunction(() => !viewerR2.state.world.loaded);
+    await page.waitForFunction(() => !!viewerR2.state.world.scene);
     assert.deepEqual(errors, []);
     result.errors = errors;
     console.log(JSON.stringify(result));

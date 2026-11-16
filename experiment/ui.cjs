@@ -68,7 +68,8 @@ fs.mkdirSync(out + "/shots", { recursive: true });
         );
         assert.equal(await page.evaluate(() => viewerR2.state.error), 0);
       };
-      await shot("empty");
+      await settled();
+      await shot("mobius");
       await page.click("#open-world");
       await page.waitForFunction(() =>
         document.querySelector("#file-message").textContent.endsWith("个项目"),
@@ -93,15 +94,6 @@ fs.mkdirSync(out + "/shots", { recursive: true });
       await page.click("#time-flow");
       await change("time", 10);
       if (width === 1280) {
-        const emptyPick = await page.evaluate(() =>
-          viewerR2.renderer.pick(viewerR2.state.camera, {
-            width: 101,
-            height: 101,
-            x: 50,
-            y: 50,
-          }),
-        );
-        assert.equal(emptyPick, null);
         await page.evaluate(() =>
           viewerR2.openWorld("/tmp/neomega-r2-java-fixture"),
         );
@@ -269,7 +261,7 @@ fs.mkdirSync(out + "/shots", { recursive: true });
       assert((await page.evaluate(() => viewerR2.state.map.tiles)) > 0);
       assert.equal(
         requests.filter((url) => url.includes("/api/world/chunks?")).length,
-        width === 1280 ? 2 : 1,
+        width === 1280 ? 3 : 2,
       );
       await page.mouse.click(width / 2, height / 2);
       await page.waitForTimeout(150);

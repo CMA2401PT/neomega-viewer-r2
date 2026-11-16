@@ -35,7 +35,7 @@ func main() {
 // run 在资源准备完成且端口监听成功后显示地址，退出时等待正在处理的请求结束。
 func run() error {
 	listen := flag.String("listen", "127.0.0.1:2412", "监听地址")
-	world := flag.String("world", "", "启动时只读打开 Java 存档，留空显示空白欢迎页")
+	world := flag.String("world", "", "启动时只读打开 Java 存档，留空显示 Möbius 默认场景")
 	webPath := flag.String("web", "", "开发时读取应用网页目录")
 	browser := flag.Bool("browser", true, "启动后用默认浏览器打开页面")
 	showVersion := flag.Bool("version", false, "打印版本号后退出")

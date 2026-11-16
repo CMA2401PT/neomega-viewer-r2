@@ -74,8 +74,8 @@ function sunDirection(hours) {
   const angle = ((hours - 6) / 24) * 2 * Math.PI;
   return [Math.cos(angle), Math.sin(angle), 0.3];
 }
-/** 切换会话时卸载旧流，关闭后继续绘制同一相机下的天空。
- * @param {{loaded:boolean,id?:number,name?:string,path?:string,position?:number[]}} info
+/** 所有会话共用流式路径，内置场景额外提供开场取景与时间。
+ * @param {{loaded:boolean,id:number,name:string,path:string,position:number[],scene?:{ocean:number,camera:{position:number[],yaw:number,pitch:number},time:number}}} info
  */
 async function useWorld(info) {
   if (photo) await finishPhoto(false);
@@ -85,18 +85,20 @@ async function useWorld(info) {
   closePopovers();
   hud.world(info);
   map.setWorld(info).catch((error) => hud.error(String(error)));
-  if (info.loaded) {
-    camera.position = [...info.position];
-    camera.yaw = -0.7;
-    camera.pitch = -0.32;
-    stream = new WorldStream({
-      renderer,
-      world: info,
-      registry,
-      onError: (message) => hud.error(message),
-    });
-    stream.update(camera.position, settings);
-  } else renderer.clear();
+  camera.position = [...(info.scene?.camera.position || info.position)];
+  camera.yaw = info.scene?.camera.yaw ?? -0.7;
+  camera.pitch = info.scene?.camera.pitch ?? -0.32;
+  if (info.scene) {
+    settings.time = info.scene.time;
+    hud.settings();
+  }
+  stream = new WorldStream({
+    renderer,
+    world: info,
+    registry,
+    onError: (message) => hud.error(message),
+  });
+  stream.update(camera.position, settings);
   frames = [];
   drawn = "";
 }
@@ -200,6 +202,7 @@ element("photo").onclick = () => {
     time: performance.now() / 1000,
     shadows: settings.shadows,
     sun: sunDirection(settings.time),
+    ...(world.scene ? { ocean: world.scene.ocean } : {}),
     fog: settings.fog ? settings.farRadius * 16 : Infinity,
   });
   photo.name = `${world.name || "天空"}-${new Date().toTimeString().slice(0, 8).replaceAll(":", "")}.png`;
@@ -284,6 +287,7 @@ function frame(now) {
       time: now / 1000,
       shadows: settings.shadows,
       sun,
+      ...(world.scene ? { ocean: world.scene.ocean } : {}),
       fog: view.fog,
       objects,
     });

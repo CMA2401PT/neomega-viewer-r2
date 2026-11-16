@@ -4,7 +4,6 @@ import (
 	"celler"
 	"celler/java"
 	"celler/layer_storage"
-	"encoding/binary"
 	"errors"
 
 	"context"
@@ -16,6 +15,7 @@ import (
 	"neomega-r2/blockactor"
 	"neomega-r2/effector"
 	"neomega-r2/object"
+	"neomega-viewer-r2/internal/worlddata"
 	"os"
 	"path/filepath"
 
@@ -78,35 +78,25 @@ func (w *World) Chunks(ctx context.Context) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	data := make([]byte, 0)
-	offsets := make(map[celler.ChunkPos]int)
+	index := make(worlddata.ChunkIndex)
 	err := w.source.Scan(java.Overworld, java.Terrain, func(pos celler.ChunkPos) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		region := celler.ChunkPos{X: pos.X >> 5, Z: pos.Z >> 5}
-		offset, exists := offsets[region]
-		if !exists {
-			offset = len(data)
-			offsets[region] = offset
-			data = append(data, make([]byte, 136)...)
-			binary.LittleEndian.PutUint32(data[offset:], uint32(region.X))
-			binary.LittleEndian.PutUint32(data[offset+4:], uint32(region.Z))
-		}
-		i := (pos.Z&31)*32 + (pos.X & 31)
-		data[offset+8+int(i>>3)] |= 1 << (i & 7)
+		index.Add(int(pos.X), int(pos.Z))
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return data, nil
+	return index.Encode(), nil
 }
 
 // Region 返回 8×8 区块列的压缩索引，每个调色板条目只携带一个共享静态模型编号。
 // 坐标、位宽、调色板长度和压缩字长度均为小端 uint32；坐标按 int32 解释。
 func (w *World) Region(ctx context.Context, rx, rz int) ([]byte, error) {
-	words := []uint32{0x33504c54, 0, 0}
+	var sections []worlddata.Section
+	var unknown uint32
 	for x := rx * 8; x < (rx+1)*8; x++ {
 		for z := rz * 8; z < (rz+1)*8; z++ {
 			if err := ctx.Err(); err != nil {
@@ -151,7 +141,7 @@ func (w *World) Region(ctx context.Context, rx, rz int) ([]byte, error) {
 				for i, state := range palette {
 					id, ok := w.mapping[string(state)]
 					if !ok {
-						words[2]++
+						unknown++
 					}
 					mapped[i] = id
 					nonAir = nonAir || id != 0
@@ -159,18 +149,16 @@ func (w *World) Region(ctx context.Context, rx, rz int) ([]byte, error) {
 				if !nonAir {
 					continue
 				}
-				words[1]++
-				words = append(words, uint32(x), uint32(y), uint32(z), p.Level, uint32(len(palette)), uint32(len(p.Data)))
-				words = append(words, mapped...)
-				words = append(words, p.Data...)
+				sections = append(sections, worlddata.Section{
+					Position: [3]int{x, int(y), z},
+					Bits:     p.Level,
+					Palette:  mapped,
+					Words:    p.Data,
+				})
 			}
 		}
 	}
-	data := make([]byte, len(words)*4)
-	for i, value := range words {
-		binary.LittleEndian.PutUint32(data[i*4:], value)
-	}
-	return data, nil
+	return worlddata.EncodeRegion(sections, unknown), nil
 }
 
 // Position 使用存档出生点，保持打开不同存档时不依赖实验场景坐标。

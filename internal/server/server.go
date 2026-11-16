@@ -3,14 +3,17 @@ package server
 
 import (
 	"container/list"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/fs"
 	r2 "neomega-r2"
 	"neomega-r2/blockactor"
 	"neomega-r2/effector"
+	"neomega-r2/object"
 	"neomega-viewer-r2/internal/filebrowse"
 	"neomega-viewer-r2/internal/javaworld"
+	"neomega-viewer-r2/internal/mobius"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -18,30 +21,47 @@ import (
 	"time"
 )
 
+// Info 描述当前可加载的来源；Loaded 同时适用于存档与内置场景。
 type Info struct {
-	ID       uint64     `json:"id"`
-	Loaded   bool       `json:"loaded"`
-	Name     string     `json:"name"`
-	Path     string     `json:"path"`
-	Position [3]float64 `json:"position"`
+	Scene    *mobius.Scene `json:"scene,omitempty"`
+	ID       uint64        `json:"id"`
+	Loaded   bool          `json:"loaded"`
+	Name     string        `json:"name"`
+	Path     string        `json:"path"`
+	Position [3]float64    `json:"position"`
 }
+
+// worldSource 只要求会话真正读取的内容，使内置场景与存档共享缓存和 HTTP 路径。
+type worldSource interface {
+	Region(context.Context, int, int) ([]byte, error)
+	Chunks(context.Context) ([]byte, error)
+	Objects(context.Context, int, int, [3]int, int, effector.Registry, blockactor.Registry) ([]object.Descriptor, error)
+	Close() error
+}
+
+// cacheEntry 将区域字节与 LRU 位置关联，限制每个会话的缓存容量。
 type cacheEntry struct {
 	key  string
 	data []byte
 }
+
+// session 隔离来源与缓存，切换后旧请求不能读取新场景。
 type session struct {
 	info   Info
-	source *javaworld.World
+	source worldSource
 	mu     sync.Mutex
 	cache  map[string]*list.Element
 	order  *list.List
 	bytes  int
 	chunks []byte
 }
+
+// Server 串行切换来源，并限制区域读取的并发量。
 type Server struct {
 	mu       sync.RWMutex
 	openMu   sync.Mutex
 	current  *session
+	builtin  *mobius.World
 	revision uint64
 	mapping  map[string]uint32
 	workers  chan struct{}
@@ -51,7 +71,15 @@ type Server struct {
 
 // New 接收启动时准备好的状态映射，使准备进度与 HTTP 会话管理各自独立。
 func New(mapping map[string]uint32, effects effector.Registry, actors blockactor.Registry) *Server {
-	return &Server{mapping: mapping, workers: make(chan struct{}, 4), Effects: effects, Actors: actors}
+	s := &Server{
+		mapping: mapping,
+		builtin: mobius.New(mapping),
+		workers: make(chan struct{}, 4),
+		Effects: effects,
+		Actors:  actors,
+	}
+	s.Close()
+	return s
 }
 
 // Open 先准备新来源，成功后等待旧读取完成再交换，打开失败时保留当前世界。
@@ -85,22 +113,35 @@ func (s *Server) Open(path string) (Info, error) {
 	}
 	return info, nil
 }
+
+// Info 让浏览器依据同一会话描述建立流式来源和开场取景。
 func (s *Server) Info() Info {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.current == nil {
-		return Info{ID: s.revision}
-	}
 	return s.current.info
 }
+
+// Close 关闭当前存档并建立新的 Möbius 会话，旧会话请求随即失效。
 func (s *Server) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.current != nil {
 		s.current.source.Close()
-		s.current = nil
 	}
 	s.revision++
+	scene := mobius.Opening()
+	s.current = &session{
+		info: Info{
+			ID:       s.revision,
+			Loaded:   true,
+			Name:     "Möbius",
+			Position: scene.Camera.Position,
+			Scene:    scene,
+		},
+		source: s.builtin,
+		cache:  map[string]*list.Element{},
+		order:  list.New(),
+	}
 }
 func writeJSON(w http.ResponseWriter, value any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -110,7 +151,7 @@ func queryInt(r *http.Request, name string) (int, error) {
 	return strconv.Atoi(r.URL.Query().Get(name))
 }
 
-// Handler 只暴露 Java 目录和公共渲染资源；欢迎页没有实验场景或隐式默认存档。
+// Handler 让内置场景与 Java 存档使用相同接口，并提供公共渲染资源。
 func (s *Server) Handler(web fs.FS) http.Handler {
 	mux := http.NewServeMux()
 	assets, _ := fs.Sub(r2.Files, "assets")
@@ -274,6 +315,14 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.read(w, r, func(current *session) (any, error) {
-		return current.source.Objects(r.Context(), values["x"], values["z"], [3]int{values["cx"], values["cy"], values["cz"]}, values["radius"], s.Effects, s.Actors)
+		return current.source.Objects(
+			r.Context(),
+			values["x"],
+			values["z"],
+			[3]int{values["cx"], values["cy"], values["cz"]},
+			values["radius"],
+			s.Effects,
+			s.Actors,
+		)
 	})
 }
