@@ -17,10 +17,12 @@ const settings = {
   // 一天中的时刻（小时）；6 点日出，18 点日落。
   time: 10,
   timeFlow: false,
+  // 远景雾遮住观察窗口的边界；关掉后远处的地形直接截断在天空前。
+  fog: true,
   stillSamples: 64,
   // 照片相对渲染画面的倍数与每像素样本数。
   photoScale: 1,
-  photoSamples: 256,
+  photoSamples: 32,
   texturePath: "",
   textureSize: 128,
   ...JSON.parse(localStorage.getItem("neomega-r2-settings") || "{}"),
@@ -67,6 +69,7 @@ for (const [id, key] of [
   ["shadows", "shadows"],
   ["time", "time"],
   ["time-flow", "timeFlow"],
+  ["fog", "fog"],
   ["still-samples", "stillSamples"],
   ["photo-scale", "photoScale"],
   ["photo-samples", "photoSamples"],
@@ -87,6 +90,10 @@ for (const [id, key] of [
 // 原生倍数随系统缩放变化：Windows 100% 缩放为 1×，Mac 的 Retina 屏约为 2×。
 element("resolution").options[0].textContent =
   `屏幕原生（${+devicePixelRatio.toFixed(2)}×）`;
+/** 远景雾接近不透明的距离：观察窗口的半径；关闭时放到无穷远。 */
+function fogDistance() {
+  return settings.fog ? settings.farRadius * 16 : Infinity;
+}
 /** 渲染像素相对窗口 CSS 像素的倍数。 */
 function renderScale() {
   return settings.resolution === "native"
@@ -214,7 +221,7 @@ element("photo").onclick = () => {
     time: performance.now() / 1000,
     shadows: settings.shadows,
     sun: sunDirection(settings.time),
-    fog: settings.farRadius * 16,
+    fog: fogDistance(),
   });
   photo.name = `${world.name}-${new Date().toTimeString().slice(0, 8).replaceAll(":", "")}.png`;
 };
@@ -288,6 +295,7 @@ function frame(now) {
       width,
       height,
       settings.shadows,
+      settings.fog,
       sun,
       renderer.version,
     ]);
@@ -304,7 +312,7 @@ function frame(now) {
       time: now / 1000,
       shadows: settings.shadows,
       sun,
-      fog: settings.farRadius * 16,
+      fog: fogDistance(),
     });
   }
   if (changed) {

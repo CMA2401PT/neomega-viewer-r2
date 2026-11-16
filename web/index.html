@@ -82,7 +82,8 @@
       <label>阴影<input id="shadows" type="checkbox" checked /></label>
       <label>时间 <span id="time-value"></span><input id="time" type="range" min="0" max="24" step="0.05" /></label>
       <label>时间流动<input id="time-flow" type="checkbox" /></label>
-      <p class="hint">阴影为每个像素向光源追踪一条射线。时间流动时一天约 4 分钟，画面每帧重绘，静止累积不会开始。</p>
+      <label>远景雾<input id="fog" type="checkbox" /></label>
+      <p class="hint">阴影为每个像素向光源追踪一条射线。时间流动时一天约 4 分钟，画面每帧重绘，静止累积不会开始。远景雾只在远景视距边缘变浓，遮住地形的截断处。</p>
       <label
         >静止时累积<select id="still-samples">
           <option value="0">关闭</option>
@@ -100,12 +101,16 @@
       >
       <label
         >照片样本<select id="photo-samples">
+          <option value="4">4 / 像素</option>
+          <option value="8">8 / 像素</option>
+          <option value="16">16 / 像素</option>
+          <option value="32">32 / 像素</option>
+          <option value="64">64 / 像素</option>
           <option value="256">256 / 像素</option>
           <option value="1024">1024 / 像素</option>
-          <option value="4096">4096 / 像素</option>
         </select></label
       >
-      <p class="hint">拍照时画面暂停，按当前视角离屏渲染，光线最多反弹 4 次，完成后下载 PNG。再按一次按钮取消。耗时随像素数与样本数成正比。</p>
+      <p class="hint">拍照时画面暂停，按当前视角离屏渲染，光线最多反弹 4 次，完成后下载 PNG。再按一次按钮取消。耗时随像素数与样本数成正比；样本少时阴影边缘和墙角会有颗粒。</p>
       <label
         >移动速度<select id="speed">
           <option value="16">16 方块 / 秒</option>
