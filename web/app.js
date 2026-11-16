@@ -147,7 +147,27 @@ async function openWorld(path, options = {}, progress, signal) {
   }
 }
 saveSettings();
-renderer = await createRenderer(canvas);
+// 页面顶部那行提示同时用来显示射线程序的编译进度；D3D 后端可能编几十秒，
+// 不显示进度会让人以为卡死。
+const statusLine = element("loading");
+let compileTicker = 0;
+const compileStarted = performance.now();
+const showCompile = ({ index, total, label }) => {
+  clearInterval(compileTicker);
+  const tick = () => {
+    const seconds = ((performance.now() - compileStarted) / 1000).toFixed(0);
+    statusLine.textContent = `正在编译 ${label}（${index}/${total}）· 已用 ${seconds} 秒`;
+  };
+  tick();
+  compileTicker = setInterval(tick, 1000);
+};
+statusLine.textContent = "正在准备渲染器…";
+try {
+  renderer = await createRenderer(canvas, { onProgress: showCompile });
+} finally {
+  clearInterval(compileTicker);
+  statusLine.textContent = "";
+}
 map = new FullscreenMap({
   renderer,
   camera,

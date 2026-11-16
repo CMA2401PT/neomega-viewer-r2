@@ -44,7 +44,8 @@ func run() error {
 	structureMemory := flag.Int("structure-memory-mib", 512, "结构转换工作内存预算（MiB，至少 64）")
 	structureWorkers := flag.Int("structure-workers", 0, "结构写出并发上限，0 自动选择")
 	webPath := flag.String("web", "", "开发时读取应用网页目录")
-	browser := flag.Bool("browser", true, "启动后用默认浏览器打开页面")
+	browser := flag.Bool("browser", true, "启动后自动打开应用窗口")
+	angle := flag.String("angle", "gl", "打开窗口时使用的 ANGLE 后端：gl、vulkan、d3d11；system 表示系统默认浏览器")
 	showVersion := flag.Bool("version", false, "打印版本号后退出")
 	flag.Parse()
 	if *showVersion {
@@ -123,7 +124,13 @@ func run() error {
 	address := desktop.BrowserAddress(listener.Addr())
 	desktop.PrintReady(os.Stdout, address, colored)
 	if *browser {
-		desktop.OpenBrowser(address)
+		// 开机/双击时没有任何参数，用这里的默认后端直接打开应用窗口。
+		if *angle == "system" {
+			desktop.OpenBrowser(address)
+			fmt.Println("  窗口：系统默认浏览器")
+		} else {
+			fmt.Println("  窗口：" + desktop.LaunchApp(address, *angle))
+		}
 	}
 	select {
 	case err := <-done:

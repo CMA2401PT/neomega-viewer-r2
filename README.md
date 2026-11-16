@@ -20,7 +20,7 @@ go run ./apps/neomega-viewer-r2/cmd/viewer -listen 127.0.0.1:2412
 
 浏览器访问 <http://127.0.0.1:2412>。Java 世界按维度的 `region` 目录读取，Bedrock 世界按 `db` 目录读取。
 
-Windows 上若页面停在着色器初始化、场景空白，可运行 `start-windows.cmd`（需要先构建 `dist/neomega-viewer-r2.exe`）。它启动服务，并用独立 Chrome／Edge 配置启用 OpenGL；浏览器设置和存储与日常浏览器分开。可传 `-Port 2413` 更换端口。AMD 780M 的 Windows Direct3D 11 后端已复现大型射线程序编译过慢；OpenGL 路径已通过默认场景、地图、拍照的浏览器验收。这是后端兼容启动方式，Direct3D 编译瓶颈尚未解决。初始化期间网页显示状态，失败时保留错误信息。
+Windows 上直接运行 `neomega-viewer-r2.exe` 即可：它启动服务，并用独立 Chrome／Edge 配置打开应用窗口，浏览器设置与日常浏览器分开。`-angle` 指定 ANGLE 后端（`gl` 默认、`vulkan`、`d3d11`；`system` 表示用系统默认浏览器且不带参数），`-browser=false` 只起服务。浏览器配置目录按 exe 旁的 `runtime/`、`%LOCALAPPDATA%`、临时目录取第一个可写的。AMD 780M 的 Windows Direct3D 11 后端已复现大型射线程序编译过慢，所以默认走 OpenGL；初始化期间页面顶部显示正在编译哪个射线程序以及已用时间。
 
 也可启动时直接打开：
 
