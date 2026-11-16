@@ -89,6 +89,8 @@ async function installWorld(info, preserveCamera) {
   if (world.id === info.id) { world = info; return; }
   if (world.id > info.id) return;
   if (photo) await finishPhoto(false);
+  // 离开开场场景或直接载入外部来源时从白天开始；来源之间切换及连接重置保留当前时间。
+  const startDaytime = !info.scene && (!world.loaded || !!world.scene);
   stream?.dispose();
   stream = null;
   world = info;
@@ -100,8 +102,8 @@ async function installWorld(info, preserveCamera) {
     camera.yaw = info.scene?.camera.yaw ?? -0.7;
     camera.pitch = info.scene?.camera.pitch ?? -0.32;
   }
-  if (info.scene) {
-    settings.time = info.scene.time;
+  if (info.scene || startDaytime) {
+    settings.time = info.scene?.time ?? 10;
     hud.settings();
   }
   stream = new WorldStream({
