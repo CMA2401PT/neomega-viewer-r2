@@ -13,6 +13,7 @@ type Entry struct {
 	Name  string `json:"name"`
 	Path  string `json:"path"`
 	World bool   `json:"world"`
+	Pack  bool   `json:"pack"`
 }
 type Listing struct {
 	Path    string  `json:"path"`
@@ -22,7 +23,7 @@ type Listing struct {
 }
 
 // List 由 Go 处理盘符、父目录和符号链接，网页只使用返回的完整路径。
-func List(path string) (Listing, error) {
+func List(path string, packs bool) (Listing, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return Listing{}, err
@@ -52,12 +53,19 @@ func List(path string) (Listing, error) {
 	for _, entry := range entries {
 		full := filepath.Join(path, entry.Name())
 		stat, err := os.Stat(full)
-		if err != nil || !stat.IsDir() {
+		if err != nil {
 			continue
 		}
+		if !stat.IsDir() {
+			if packs && strings.EqualFold(filepath.Ext(full), ".zip") {
+				out.Entries = append(out.Entries, Entry{Name: entry.Name(), Path: full, Pack: true})
+			}
+			continue
+		}
+		_, packErr := os.Stat(filepath.Join(full, "assets"))
 		_, levelErr := os.Stat(filepath.Join(full, "level.dat"))
 		_, regionErr := os.Stat(filepath.Join(full, "region"))
-		out.Entries = append(out.Entries, Entry{Name: entry.Name(), Path: full, World: levelErr == nil && regionErr == nil})
+		out.Entries = append(out.Entries, Entry{Name: entry.Name(), Path: full, World: levelErr == nil && regionErr == nil, Pack: packs && packErr == nil})
 	}
 	slices.SortFunc(out.Entries, func(a, b Entry) int { return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
 	return out, nil

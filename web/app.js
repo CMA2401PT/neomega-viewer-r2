@@ -1,3 +1,4 @@
+import { decodeTextures } from "/r2/render/textures.js";
 import { createRenderer } from "/r2/render/renderer.js";
 import { ObjectRegistry } from "/r2/objects/registry.js";
 import { enchantingBook } from "/r2/effects/enchanting-book.js";
@@ -13,7 +14,15 @@ const settings = {
   resolution: "native",
   speed: 32,
   shadows: true,
-  sunMotion: true,
+  // 一天中的时刻（小时）；6 点日出，18 点日落。
+  time: 10,
+  timeFlow: false,
+  stillSamples: 64,
+  // 照片相对渲染画面的倍数与每像素样本数。
+  photoScale: 1,
+  photoSamples: 256,
+  texturePath: "",
+  textureSize: 128,
   ...JSON.parse(localStorage.getItem("neomega-r2-settings") || "{}"),
 };
 const controls = new FlightControls(canvas, camera);
@@ -34,7 +43,9 @@ let renderer,
   drawn = "",
   drawnAt = 0,
   // 性能实验需要每帧都绘制，才能连续采样 GPU 时间。
-  continuous = false;
+  continuous = false,
+  // 正在拍的照片；拍照期间相机、场景和时间都停住，帧循环只推进它。
+  photo = null;
 const showError = (message) => {
   if (opening) return;
   element("notice").textContent = message;
@@ -44,6 +55,7 @@ function setSettings() {
   element("near-value").textContent = `${settings.nearRadius} 区块半径`;
   element("far-value").textContent =
     `${settings.farRadius} 区块半径（${settings.farRadius * 16} 方块）`;
+  showTime();
   localStorage.setItem("neomega-r2-settings", JSON.stringify(settings));
   renderer?.resetTiming();
 }
@@ -53,13 +65,17 @@ for (const [id, key] of [
   ["resolution", "resolution"],
   ["speed", "speed"],
   ["shadows", "shadows"],
-  ["sun-motion", "sunMotion"],
+  ["time", "time"],
+  ["time-flow", "timeFlow"],
+  ["still-samples", "stillSamples"],
+  ["photo-scale", "photoScale"],
+  ["photo-samples", "photoSamples"],
 ]) {
   const input = element(id),
     toggle = input.type === "checkbox";
   if (toggle) input.checked = settings[key];
   else input.value = String(settings[key]);
-  input.addEventListener("change", () => {
+  input.addEventListener(id === "time" ? "input" : "change", () => {
     settings[key] = toggle
       ? input.checked
       : key === "resolution"
@@ -71,11 +87,23 @@ for (const [id, key] of [
 // 原生倍数随系统缩放变化：Windows 100% 缩放为 1×，Mac 的 Retina 屏约为 2×。
 element("resolution").options[0].textContent =
   `屏幕原生（${+devicePixelRatio.toFixed(2)}×）`;
-/** 临时的太阳轨迹：90 秒内从东方升到西方再回到东方，始终在地平线以上；关闭运动时停在上午的位置。
- * @param {number} seconds
+/** 渲染像素相对窗口 CSS 像素的倍数。 */
+function renderScale() {
+  return settings.resolution === "native"
+    ? devicePixelRatio
+    : Number(settings.resolution);
+}
+function showTime() {
+  const minutes = Math.floor(settings.time * 60) % 1440;
+  element("time-value").textContent =
+    `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+/** 太阳沿东西方向的圆周运动，6 点从东方（+X）升起，12 点最高，18 点在西方落下；
+ * 轨道略向 +Z 倾斜，正午的影子不会正好落在脚下。
+ * @param {number} hours
  */
-function sunDirection(seconds) {
-  const angle = Math.PI * (0.12 + 0.76 * (settings.sunMotion ? (seconds / 90) % 1 : 0.3));
+function sunDirection(hours) {
+  const angle = ((hours - 6) / 24) * 2 * Math.PI;
   return [Math.cos(angle), Math.sin(angle), 0.3];
 }
 setSettings();
@@ -97,7 +125,14 @@ async function useWorld(info) {
     return;
   }
   element("loading").textContent = "正在加载共享模型…";
-  if (!renderer) renderer = await (rendererPromise ??= createRenderer(canvas));
+  if (!renderer) renderer = await (rendererPromise ??= (async () => {
+    const instance = await createRenderer(canvas);
+    if (settings.texturePath || settings.textureSize !== 128) {
+      try { instance.setTextures(await loadTextures(settings.texturePath, settings.textureSize)); }
+      catch (error) { element("texture-status").textContent = String(error); }
+    }
+    return instance;
+  })());
   if (version !== epoch) return;
   camera.position = [...info.position];
   camera.yaw = -0.7;
@@ -127,6 +162,78 @@ async function openWorld(path) {
   }
 }
 const picker = createPicker(openWorld);
+/** 请求由核心合成的完整资源；应用只传路径和尺寸设置。
+ * @param {string} path @param {number} maxSize
+ */
+async function loadTextures(path, maxSize) {
+  const response = await fetch("/api/textures", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, maxSize }),
+  });
+  if (!response.ok) throw Error(await response.text());
+  return decodeTextures(await response.arrayBuffer());
+}
+/** 切换期间旧场景继续绘制，完成后保持相机和存档会话。 */
+async function applyTextures(path) {
+  const buttons = ["texture-browse", "texture-apply", "texture-reset", "texture-size"];
+  for (const id of buttons) element(id).disabled = true;
+  element("texture-status").textContent = "正在合成贴图与透明度数据…";
+  const maxSize = Number(element("texture-size").value);
+  try {
+    const set = await loadTextures(path, maxSize);
+    if (stream) await stream.setTextures(set);
+    else renderer?.setTextures(set);
+    settings.texturePath = path;
+    settings.textureSize = maxSize;
+    element("texture-path").value = path;
+    element("texture-status").textContent = `${path ? "材质包" : "原版"} · ${set.info.side}×${set.info.side} · ${set.info.levels} 级 mip`;
+    setSettings();
+    drawn = "";
+  } catch (error) {
+    element("texture-status").textContent = String(error);
+    throw error;
+  } finally {
+    for (const id of buttons) element(id).disabled = false;
+  }
+}
+element("texture-path").value = settings.texturePath;
+element("texture-size").value = String(settings.textureSize);
+element("texture-browse").onclick = () => picker({ kind: "pack", choose: applyTextures });
+element("texture-apply").onclick = () => applyTextures(element("texture-path").value).catch(showError);
+element("texture-reset").onclick = () => applyTextures("").catch(showError);
+element("texture-size").onchange = () => applyTextures(settings.texturePath).catch(showError);
+/** 按当前画面参数开始拍照；正在拍时再按一次取消。 */
+element("photo").onclick = () => {
+  if (photo) return finishPhoto();
+  if (!world.loaded || !renderer) return;
+  const scale = renderScale() * settings.photoScale;
+  photo = renderer.photograph(camera, {
+    width: Math.round(innerWidth * scale),
+    height: Math.round(innerHeight * scale),
+    samples: settings.photoSamples,
+    time: performance.now() / 1000,
+    shadows: settings.shadows,
+    sun: sunDirection(settings.time),
+    fog: settings.farRadius * 16,
+  });
+  photo.name = `${world.name}-${new Date().toTimeString().slice(0, 8).replaceAll(":", "")}.png`;
+};
+/** 结束拍照；完成时下载 PNG，取消时直接丢弃。 */
+async function finishPhoto() {
+  const job = photo;
+  photo = null;
+  element("photo").textContent = "拍照";
+  if (job.progress === 1) {
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(await job.png());
+    link.download = job.name;
+    link.click();
+    // 下载由浏览器异步开始，稍后再释放地址。
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  }
+  job.dispose();
+  drawn = "";
+}
 element("open-world").onclick = picker;
 element("open-empty").onclick = picker;
 for (const name of ["settings", "info"])
@@ -156,16 +263,24 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (!world.loaded || !stream) return;
+  if (photo) {
+    if (photo.step()) finishPhoto();
+    else element("photo").textContent = `取消拍照 ${Math.floor(photo.progress * 100)}%`;
+    return;
+  }
   controls.update(dt, Number(settings.speed));
+  // 时间流动时一天约 4 分钟。滑块跟着走，但不必每帧写入本地存储。
+  if (settings.timeFlow) {
+    settings.time = (settings.time + (dt * 24) / 240) % 24;
+    element("time").value = String(settings.time);
+    showTime();
+  }
   stream.update(camera.position, settings);
   stream.publish();
-  const scale =
-      settings.resolution === "native"
-        ? devicePixelRatio
-        : Number(settings.resolution),
+  const scale = renderScale(),
     width = Math.round(innerWidth * scale),
     height = Math.round(innerHeight * scale),
-    sun = sunDirection(now / 1000),
+    sun = sunDirection(settings.time),
     state = JSON.stringify([
       camera.position,
       camera.yaw,
@@ -176,20 +291,24 @@ function frame(now) {
       sun,
       renderer.version,
     ]);
-  // 画面由上一帧保留（preserveDrawingBuffer），静止时 GPU 可以空闲。
-  if (
+  // 画面变化时出一帧预览；静止后逐帧累积样本，到上限后停笔，GPU 回到空闲。
+  const changed =
     continuous ||
     state !== drawn ||
-    renderer.animating(camera, { width, height })
-  ) {
+    renderer.animating(camera, { width, height });
+  if (changed || renderer.accumulated < settings.stillSamples) {
     renderer.draw(camera, {
       width,
       height,
+      accumulate: !changed,
       time: now / 1000,
       shadows: settings.shadows,
       sun,
+      fog: settings.farRadius * 16,
     });
-    // 帧率只统计连续绘制之间的间隔，静止后的第一帧不计入。
+  }
+  if (changed) {
+    // 帧率只统计画面变化时连续绘制之间的间隔，静止后的第一帧不计入。
     if (now - drawnAt < 250) frames.push(now - drawnAt);
     if (frames.length > 240) frames.shift();
     drawn = state;
@@ -209,7 +328,9 @@ function frame(now) {
       .join(" / ");
     element("fps").textContent =
       now - drawnAt > 300 || !frames.length
-        ? `静止 · ${width}×${height}`
+        ? renderer.accumulated < settings.stillSamples
+          ? `静止累积 ${renderer.accumulated}/${settings.stillSamples} · ${width}×${height}`
+          : `静止 · ${width}×${height}`
         : `${Math.round(1000 / interval)} FPS · ${width}×${height}`;
     element("details").textContent =
       `${world.name}\n${world.path}\n\n近景半径：${settings.nearRadius} 区块\n远景半径：${settings.farRadius} 区块，覆盖 ${settings.farRadius * 32}×${settings.farRadius * 32}×512 方块\n静态模型 section：${stats.sections}\n已发布区域：${stats.loaded}/${stats.wanted}\n待更新区域：${stats.pending} · 失败：${stats.failed}\n特殊对象：${stats.objects}\n累计传输：${(stats.bytes / 1024 ** 2).toFixed(1)} MiB\n区域显存已用：${(stats.usedBytes / 1024 ** 2).toFixed(1)} MiB\nGPU 纹理分配：${(renderer.textureBytes / 1024 ** 2).toFixed(1)} MiB\nGPU 中位数：${median?.toFixed(2) || "…"} ms\n实际像素：${width}×${height}\n\n仅支持 Java 主世界。含水附加层与更多 NBT 外观尚未接入。`;
@@ -245,6 +366,7 @@ globalThis.viewerR2 = {
     continuous = value;
   },
   openWorld,
+  applyTextures,
   close: () => element("close-world").click(),
   get renderer() {
     return renderer;

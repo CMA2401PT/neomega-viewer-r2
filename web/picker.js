@@ -4,7 +4,8 @@ export function createPicker(openWorld) {
     input = document.querySelector("#directory"),
     list = document.querySelector("#file-list"),
     message = document.querySelector("#file-message");
-  let listing;
+  let listing, kind = "world", onChoose = openWorld;
+  const paths = { world: "", pack: "" };
   async function browse(path = "") {
     message.textContent = "正在读取目录…";
     input.disabled = true;
@@ -12,7 +13,7 @@ export function createPicker(openWorld) {
     document.querySelector("#parent").disabled = true;
     try {
       const response = await fetch(
-        "/api/files?path=" + encodeURIComponent(path),
+        "/api/files?kind=" + kind + "&path=" + encodeURIComponent(path),
       );
       if (!response.ok) throw Error(await response.text());
       listing = await response.json();
@@ -32,13 +33,13 @@ export function createPicker(openWorld) {
         name.textContent = entry.name;
         const kind = document.createElement("span");
         kind.className = "kind";
-        kind.textContent = entry.world ? "Java 存档" : "目录";
+        kind.textContent = entry.pack ? "材质包" : entry.world ? "Java 存档" : "目录";
         row.append(name, kind);
         row.onclick = () =>
-          entry.world ? choose(entry.path) : browse(entry.path);
+          entry.pack || entry.world ? choose(entry.path) : browse(entry.path);
         list.append(row);
       }
-      message.textContent = listing.entries.length + " 个目录";
+      message.textContent = listing.entries.length + " 个项目";
     } catch (error) {
       message.textContent = String(error);
     } finally {
@@ -48,9 +49,10 @@ export function createPicker(openWorld) {
     }
   }
   async function choose(path) {
-    message.textContent = "正在打开存档…";
+    message.textContent = kind === "pack" ? "正在合成材质包…" : "正在打开存档…";
     try {
-      await openWorld(path);
+      await onChoose(path);
+      paths[kind] = path;
       dialog.close();
     } catch (error) {
       message.textContent = String(error);
@@ -65,8 +67,13 @@ export function createPicker(openWorld) {
   });
   document.querySelector("#parent").onclick = () => browse(listing.parent);
   document.querySelector("#open-directory").onclick = () => choose(input.value);
-  return () => {
+  return ({ kind: nextKind = "world", choose: callback = openWorld } = {}) => {
+    kind = nextKind;
+    onChoose = callback;
+    dialog.querySelector("h2").textContent = kind === "pack" ? "选择 Java 材质包" : "打开 Java 存档";
+    document.querySelector("#open-directory").textContent = kind === "pack" ? "使用当前材质包目录" : "打开当前存档目录";
+    dialog.querySelector(".hint").textContent = kind === "pack" ? "选择 zip 文件或包含 assets 的材质包目录，也可直接输入完整路径。" : "请选择包含 level.dat 和 region 的 Java 主世界目录。存档以只读方式打开。";
     dialog.showModal();
-    browse(input.value);
+    browse(paths[kind]);
   };
 }

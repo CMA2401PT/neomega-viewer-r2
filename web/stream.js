@@ -40,7 +40,7 @@ export class WorldStream {
     this.worker.onerror = (event) => onError(event.message);
     this.worker.postMessage({
       type: "init",
-      catalogURL: "/r2/assets/catalog.json",
+      catalog: renderer.catalog,
     });
   }
   near(x, z) {
@@ -65,6 +65,7 @@ export class WorldStream {
   }
   /** 只有跨区块或设置改变才调整近景；远景每跨一个 128 方块区域移动一次目录窗口。 */
   update(position, { nearRadius, farRadius }) {
+    if (this.textureChange) return;
     const center = position.map((v) => Math.floor(v / 16)),
       signature = center.join("/") + `/${nearRadius}/${farRadius}`;
     if (signature === this.signature) return;
@@ -141,7 +142,7 @@ export class WorldStream {
     );
   }
   pump() {
-    if (this.disposed || !this.center) return;
+    if (this.disposed || this.textureChange || !this.center) return;
     const ordered = [...this.entries.values()].sort(
       (a, b) => this.priority(a) - this.priority(b),
     );
@@ -238,6 +239,7 @@ export class WorldStream {
         });
       if (!response.ok) throw Error(await response.text());
       const descriptors = await response.json();
+      await this.textureChange?.promise;
       if (
         this.disposed ||
         this.entries.get(entry.key) !== entry ||
@@ -280,6 +282,24 @@ export class WorldStream {
         this.dirtyNeighbors(entry.x, entry.z);
       }
     }
+    if (data.type === "textures") {
+      const change = this.textureChange;
+      try {
+        for (const result of data.results) this.gpu.install(result);
+        this.renderer.setTextures(change.set);
+        for (const [key, version] of change.versions) {
+          const entry = this.entries.get(key);
+          entry.prepared = version;
+          entry.published = version;
+        }
+        change.resolve();
+      } catch (error) { change.reject(error); }
+      return;
+    }
+    if (data.type === "prepared" && this.textureChange) {
+      this.preparing = null;
+      return;
+    }
     if (data.type === "prepared") {
       const pending = this.preparing;
       this.preparing = null;
@@ -298,6 +318,10 @@ export class WorldStream {
         this.prepareMS += data.result.stats.prepareMS;
       }
     }
+    if (data.type === "error" && this.textureChange) {
+      this.textureChange.reject(Error(data.error));
+      return;
+    }
     if (data.type === "error") {
       const entry = this.entries.get(this.preparing?.key || data.key);
       if (entry) entry.failed = true;
@@ -308,7 +332,7 @@ export class WorldStream {
   }
   /** 在绘制前发布一个完成的区域，上传不再阻塞网络下载或后台构建。 */
   publish() {
-    if (this.disposed) return;
+    if (this.disposed || this.textureChange) return;
     const next = this.ready.shift();
     if (
       next &&
@@ -326,6 +350,24 @@ export class WorldStream {
       }
     }
     this.pump();
+  }
+  /** 用缓存来源按新透明分类重新准备已显示区域，完成后同帧发布贴图和空间目录。
+   * @param {import("/r2/render/textures.js").TextureSet} set
+   */
+  async setTextures(set) {
+    const change = { set, versions: new Map() };
+    change.promise = new Promise((resolve, reject) => Object.assign(change, { resolve, reject }));
+    this.textureChange = change;
+    this.ready = [];
+    for (const entry of this.entries.values()) this.dirty(entry);
+    const regions = [...this.gpu.regions.keys()].map((key) => {
+      const entry = this.entries.get(key);
+      change.versions.set(key, entry.version);
+      return { x: entry.x, z: entry.z };
+    });
+    this.worker.postMessage({ type: "textures", catalog: set.catalog, regions, objects: this.objects.references() });
+    try { await change.promise; }
+    finally { this.textureChange = null; this.pump(); }
   }
   get stats() {
     const all = [...this.entries.values()],
@@ -356,6 +398,7 @@ export class WorldStream {
   }
   dispose() {
     this.disposed = true;
+    this.textureChange?.reject(Error("存档已经关闭或切换"));
     for (const controller of this.controllers) controller.abort();
     this.worker.terminate();
     this.objects.clear();

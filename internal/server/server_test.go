@@ -4,6 +4,7 @@ import (
 	"celler"
 	"celler/java"
 	"celler/layer_storage"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
@@ -95,6 +96,32 @@ func TestSessionAndNearObjectBoundary(t *testing.T) {
 	second := request("GET", regionURL, "")
 	if first.Code != 200 || first.Body.String() != second.Body.String() {
 		t.Fatal("区域缓存改变了数据")
+	}
+	textures := request("POST", "/api/textures", `{"path":"","maxSize":32}`)
+	if textures.Code != 200 {
+		t.Fatal(textures.Code, textures.Body.String())
+	}
+	if service.Info() != info {
+		t.Fatal("材质包接口改变了存档会话")
+	}
+	wire := textures.Body.Bytes()
+	headerLength := binary.LittleEndian.Uint32(wire)
+	var textureHeader struct {
+		Info struct {
+			Side   int
+			Levels int
+			Layers int
+		}
+		Files []struct {
+			Name   string
+			Length int
+		}
+	}
+	if err = json.Unmarshal(wire[4:4+headerLength], &textureHeader); err != nil {
+		t.Fatal(err)
+	}
+	if textureHeader.Info.Side != 16 || textureHeader.Info.Levels != 5 || textureHeader.Info.Layers != 563 || len(textureHeader.Files) != 11 {
+		t.Fatal(textureHeader)
 	}
 	if actor.calls != 0 {
 		t.Fatal("远景调用了 NBT 外观处理器")

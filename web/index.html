@@ -21,6 +21,7 @@
     <footer>
       <button id="open-world">打开存档</button
       ><button id="settings-open">设置</button
+      ><button id="photo">拍照</button
       ><button id="jump-open">坐标</button
       ><button id="info-open">场景信息</button
       ><button id="close-world">关闭存档</button><span id="position"></span
@@ -71,9 +72,40 @@
       <p class="hint">
         画面清晰度主要取决于实际像素数。屏幕原生按系统缩放比例渲染；高于 1× 时先按更多像素渲染再缩小显示，边缘更细腻，开销随像素数增长。
       </p>
+      <label>Java 材质包<input id="texture-path" placeholder="原版（可输入 zip 或文件夹路径）" /></label>
+      <div class="row"><button id="texture-browse">选择材质包</button><button id="texture-apply">应用</button><button id="texture-reset">恢复原版</button></div>
+      <label>贴图尺寸上限<select id="texture-size">
+        <option value="16">16</option><option value="32">32</option><option value="64">64</option>
+        <option value="128" selected>128</option><option value="256">256</option><option value="512">512</option>
+      </select></label>
+      <p id="texture-status" class="hint">缺失贴图使用原版。支持 labPBR 法线与高光贴图，切换保留当前存档和视角。</p>
       <label>阴影<input id="shadows" type="checkbox" checked /></label>
-      <label>太阳运动<input id="sun-motion" type="checkbox" checked /></label>
-      <p class="hint">阴影为每个像素向太阳追踪一条射线，开销较大。太阳运动时画面每帧重绘。</p>
+      <label>时间 <span id="time-value"></span><input id="time" type="range" min="0" max="24" step="0.05" /></label>
+      <label>时间流动<input id="time-flow" type="checkbox" /></label>
+      <p class="hint">阴影为每个像素向光源追踪一条射线。时间流动时一天约 4 分钟，画面每帧重绘，静止累积不会开始。</p>
+      <label
+        >静止时累积<select id="still-samples">
+          <option value="0">关闭</option>
+          <option value="16">16 帧</option>
+          <option value="64">64 帧</option>
+          <option value="256">256 帧</option>
+        </select></label
+      >
+      <p class="hint">镜头停下后逐帧叠加样本：边缘抗锯齿、阴影边缘变柔和、墙角与屋檐下出现间接光的明暗。到达帧数后停止绘制。</p>
+      <label
+        >照片尺寸<select id="photo-scale">
+          <option value="1">与渲染画面相同</option>
+          <option value="2">渲染画面 2×</option>
+        </select></label
+      >
+      <label
+        >照片样本<select id="photo-samples">
+          <option value="256">256 / 像素</option>
+          <option value="1024">1024 / 像素</option>
+          <option value="4096">4096 / 像素</option>
+        </select></label
+      >
+      <p class="hint">拍照时画面暂停，按当前视角离屏渲染，光线最多反弹 4 次，完成后下载 PNG。再按一次按钮取消。耗时随像素数与样本数成正比。</p>
       <label
         >移动速度<select id="speed">
           <option value="16">16 方块 / 秒</option>

@@ -133,12 +133,29 @@ func (s *Server) Handler(web fs.FS) http.Handler {
 	})
 	mux.HandleFunc("POST /api/world/close", func(w http.ResponseWriter, r *http.Request) { s.Close(); writeJSON(w, s.Info()) })
 	mux.HandleFunc("GET /api/files", func(w http.ResponseWriter, r *http.Request) {
-		listing, err := filebrowse.List(r.URL.Query().Get("path"))
+		listing, err := filebrowse.List(r.URL.Query().Get("path"), r.URL.Query().Get("kind") == "pack")
 		if err != nil {
 			http.Error(w, err.Error(), 400)
 			return
 		}
 		writeJSON(w, listing)
+	})
+	mux.HandleFunc("POST /api/textures", func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Path    string `json:"path"`
+			MaxSize int    `json:"maxSize"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		textures, err := r2.BuildTextures(request.Path, request.MaxSize)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		textures.WriteTo(w)
 	})
 	mux.HandleFunc("GET /api/world/region", s.region)
 	mux.HandleFunc("GET /api/world/objects", s.objects)
