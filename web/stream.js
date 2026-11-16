@@ -31,6 +31,7 @@ export class WorldStream {
     this.preparing = null;
     this.serial = 0;
     this.bytes = 0;
+    this.clippedSections = world.clippedSections || 0;
     this.uploadMS = 0;
     this.prepareMS = 0;
     this.disposed = false;
@@ -135,6 +136,9 @@ export class WorldStream {
           ...value,
           key,
           state: "queued",
+          request: 0,
+          contentVersion: 0,
+          requiredVersion: 0,
           version: 1,
           published: 0,
           prepared: 0,
@@ -150,7 +154,7 @@ export class WorldStream {
       if (entry.visible && !value.visible) this.gpu.remove(key);
       entry.visible = value.visible;
       entry.near = near;
-      entry.objectSignature = near ? center.join("/") + "/" + nearRadius : "";
+      entry.objectSignature = near ? center.join("/") + "/" + nearRadius + "/" + entry.contentVersion : "";
       if (!near && entry.objectsLoaded) {
         const changed = this.objects.removeRegion(key);
         entry.objectsLoaded = "";
@@ -158,6 +162,57 @@ export class WorldStream {
       }
     }
     this.pump();
+  }
+  /** 失效只替换来源字节，旧 GPU 内容保留到新结果准备完成。
+   * @param {number[][]} regions @param {number} version
+   */
+  invalidateRegions(regions, version) {
+    for (const [x, z] of regions) {
+      const entry = this.entries.get(regionKey(x, z));
+      if (!entry) continue;
+      entry.controller?.abort();
+      entry.request = ++this.serial;
+      entry.requiredVersion = version;
+      entry.contentVersion++;
+      entry.objectSignature = entry.near ? this.center.join("/") + "/" + this.nearRadius + "/" + entry.contentVersion : "";
+      entry.state = "queued";
+      this.dirty(entry);
+      this.dirtyNeighbors(x, z);
+    }
+    this.pump();
+  }
+  /** SSE 重连只重新同步保留的区域，不改变相机。 */
+  invalidateAll(version) {
+    this.invalidateRegions([...this.entries.values()].map(e => [e.x, e.z]), version);
+  }
+  /** 动态来源等待失效邻区，避免把旧片段标成新版本；静态来源仍随到随准备。 */
+  sourcesReady(entry) {
+    if (this.world.kind !== "connection") return true;
+    for (let dz = -this.fragmentRadius; dz <= this.fragmentRadius; dz++)
+      for (let dx = -this.fragmentRadius; dx <= this.fragmentRadius; dx++) {
+        const source = this.entries.get(regionKey(entry.x + dx, entry.z + dz));
+        if (source && source.state !== "stored") return false;
+      }
+    return true;
+  }
+  /** 按相同行合并实际保留的区域，来源无需重算地图与模型边界。 */
+  interestRanges() {
+    const rows = new Map();
+    for (const entry of this.entries.values()) {
+      if (!rows.has(entry.z)) rows.set(entry.z, []);
+      rows.get(entry.z).push(entry.x);
+    }
+    const ranges = [];
+    for (const [z, xs] of rows) {
+      xs.sort((a, b) => a - b);
+      let start = xs[0], end = start;
+      for (const x of xs.slice(1)) {
+        if (x === end + 1) end = x;
+        else { ranges.push({minX:start*8,minZ:z*8,maxX:end*8+7,maxZ:z*8+7}); start = end = x; }
+      }
+      ranges.push({minX:start*8,minZ:z*8,maxX:end*8+7,maxZ:z*8+7});
+    }
+    return ranges;
   }
   priority(entry) {
     return Math.hypot(
@@ -181,7 +236,8 @@ export class WorldStream {
           e.visible &&
           e.state === "stored" &&
           !e.failed &&
-          e.prepared < e.version,
+          e.prepared < e.version &&
+          this.sourcesReady(e),
       );
       if (entry) {
         const request = ++this.serial;
@@ -213,6 +269,8 @@ export class WorldStream {
   }
   async download(entry) {
     const controller = new AbortController();
+    const request = ++this.serial;
+    entry.request = request;
     entry.controller = controller;
     this.controllers.add(controller);
     entry.state = "loading";
@@ -224,14 +282,16 @@ export class WorldStream {
       );
       if (!response.ok) throw Error(await response.text());
       const buffer = await response.arrayBuffer();
-      if (this.disposed || this.entries.get(entry.key) !== entry) return;
+      if (this.disposed || this.entries.get(entry.key) !== entry || entry.request !== request) return;
+      if (Number(response.headers.get("X-R2-Version")) < entry.requiredVersion) { entry.state = "queued"; return; }
       this.bytes += buffer.byteLength;
+      this.clippedSections = Math.max(this.clippedSections, Number(response.headers.get("X-R2-Clipped-Sections")));
       entry.state = "storing";
-      this.worker.postMessage({ type: "put", key: entry.key, buffer }, [
+      this.worker.postMessage({ type: "put", key: entry.key, request, buffer }, [
         buffer,
       ]);
     } catch (error) {
-      if (error.name !== "AbortError" && !this.disposed) {
+      if (error.name !== "AbortError" && !this.disposed && entry.request === request) {
         entry.failed = true;
         entry.state = "failed";
         this.onError(String(error));
@@ -301,7 +361,7 @@ export class WorldStream {
     if (this.disposed) return;
     if (data.type === "stored") {
       const entry = this.entries.get(data.key);
-      if (entry) {
+      if (entry && entry.request === data.request) {
         entry.state = "stored";
         this.dirtyNeighbors(entry.x, entry.z);
       }
@@ -328,6 +388,7 @@ export class WorldStream {
     }
     if (data.type === "prepared") {
       const pending = this.preparing;
+      if (!pending || pending.request !== data.request) return;
       this.preparing = null;
       const entry = this.entries.get(pending.key);
       if (
@@ -427,6 +488,7 @@ export class WorldStream {
       ).length,
       sections: installed.reduce((n, e) => n + e.stats.sections, 0),
       bytes: this.bytes,
+      clippedSections: this.clippedSections,
       usedBytes: this.gpu.allocator.used * 4,
       prepareMS: this.prepareMS,
       uploadMS: this.uploadMS,

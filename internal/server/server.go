@@ -7,28 +7,48 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"neomega-converter-core/structure"
+	"neomega-converter-core/worldinput"
 	r2 "neomega-r2"
 	"neomega-r2/blockactor"
 	"neomega-r2/effector"
 	"neomega-r2/object"
 	"neomega-viewer-r2/internal/filebrowse"
-	"neomega-viewer-r2/internal/javaworld"
+	"neomega-viewer-r2/internal/linksource"
 	"neomega-viewer-r2/internal/mobius"
+	"neomega-viewer-r2/internal/worldsource"
+	"neomega-viewer-r2/r2link"
 	"net/http"
-	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 // Info 描述当前可加载的来源；Loaded 同时适用于存档与内置场景。
 type Info struct {
-	Scene    *mobius.Scene `json:"scene,omitempty"`
-	ID       uint64        `json:"id"`
-	Loaded   bool          `json:"loaded"`
-	Name     string        `json:"name"`
-	Path     string        `json:"path"`
-	Position [3]float64    `json:"position"`
+	Connection *Connection       `json:"connection,omitempty"`
+	LinkStats  *linksource.Stats `json:"linkStats,omitempty"`
+	worldinput.Info
+	Scene              *mobius.Scene `json:"scene,omitempty"`
+	ID                 uint64        `json:"id"`
+	Loaded             bool          `json:"loaded"`
+	MinY               int           `json:"minY"`
+	Height             int           `json:"height"`
+	BedrockFix         bool          `json:"bedrockFix"`
+	StructureMemoryMiB int           `json:"structureMemoryMiB"`
+	StructureWorkers   int           `json:"structureWorkers"`
+	ClippedSections    int           `json:"clippedSections"`
+}
+
+// OpenOptions 让网页只覆盖用户填写的选项，其余使用服务启动时的默认值。
+type OpenOptions struct {
+	Path               string                   `json:"path"`
+	Dimension          string                   `json:"dimension"`
+	BedrockFix         *bool                    `json:"bedrockFix"`
+	StructureMemoryMiB int                      `json:"structureMemoryMiB"`
+	StructureWorkers   *int                     `json:"structureWorkers"`
+	Progress           func(structure.Progress) `json:"-"`
 }
 
 // worldSource 只要求会话真正读取的内容，使内置场景与存档共享缓存和 HTTP 路径。
@@ -47,70 +67,103 @@ type cacheEntry struct {
 
 // session 隔离来源与缓存，切换后旧请求不能读取新场景。
 type session struct {
-	info   Info
-	source worldSource
-	mu     sync.Mutex
-	cache  map[string]*list.Element
-	order  *list.List
-	bytes  int
-	chunks []byte
+	version uint64
+	info    Info
+	source  worldSource
+	mu      sync.Mutex
+	cache   map[string]*list.Element
+	order   *list.List
+	bytes   int
+	chunks  []byte
 }
 
 // Server 串行切换来源，并限制区域读取的并发量。
 type Server struct {
-	mu       sync.RWMutex
-	openMu   sync.Mutex
-	current  *session
-	builtin  *mobius.World
-	revision uint64
-	mapping  map[string]uint32
-	workers  chan struct{}
-	Effects  effector.Registry
-	Actors   blockactor.Registry
+	ConnectMemoryMiB int
+	linkCancel       context.CancelFunc
+	linkDone         chan struct{}
+	connection       *Connection
+	pages            map[uint64]*pageView
+	pageID           uint64
+	viewChanged      chan struct{}
+	camera           *r2link.Camera
+	command          uint64
+	Options          worldsource.Options
+	mu               sync.RWMutex
+	openMu           sync.Mutex
+	current          *session
+	builtin          *mobius.World
+	revision         uint64
+	mapping          map[string]uint32
+	workers          chan struct{}
+	Effects          effector.Registry
+	Actors           blockactor.Registry
 }
 
 // New 接收启动时准备好的状态映射，使准备进度与 HTTP 会话管理各自独立。
 func New(mapping map[string]uint32, effects effector.Registry, actors blockactor.Registry) *Server {
 	s := &Server{
-		mapping: mapping,
-		builtin: mobius.New(mapping),
-		workers: make(chan struct{}, 4),
-		Effects: effects,
-		Actors:  actors,
+		ConnectMemoryMiB: 512,
+		pages:            map[uint64]*pageView{},
+		viewChanged:      make(chan struct{}, 1),
+		Options:          worldsource.Options{Options: worldinput.Options{Structure: structure.Options{MemoryMiB: 512}}},
+		mapping:          mapping,
+		builtin:          mobius.New(mapping),
+		workers:          make(chan struct{}, 4),
+		Effects:          effects,
+		Actors:           actors,
 	}
 	s.Close()
 	return s
 }
 
 // Open 先准备新来源，成功后等待旧读取完成再交换，打开失败时保留当前世界。
-func (s *Server) Open(path string) (Info, error) {
+func (s *Server) Open(ctx context.Context, request OpenOptions) (Info, error) {
 	s.openMu.Lock()
 	defer s.openMu.Unlock()
-	path, err := filepath.Abs(path)
+	options := s.Options
+	options.Path = request.Path
+	options.Dimension = request.Dimension
+	options.Structure.Progress = request.Progress
+	if request.BedrockFix != nil {
+		options.SkipBedrockFix = !*request.BedrockFix
+	}
+	if request.StructureMemoryMiB != 0 {
+		options.Structure.MemoryMiB = request.StructureMemoryMiB
+	}
+	if request.StructureWorkers != nil {
+		options.Structure.Workers = *request.StructureWorkers
+	}
+	source, err := worldsource.Open(ctx, options, s.mapping)
 	if err != nil {
 		return Info{}, err
 	}
-	if filepath.Base(path) == "level.dat" {
-		path = filepath.Dir(path)
-	}
-	source, err := javaworld.OpenWorld(path, s.mapping)
-	if err != nil {
-		return Info{}, err
-	}
-	position, err := source.Position()
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		source.Close()
 		return Info{}, err
 	}
+	s.stopLink()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.connection = nil
+	s.camera = nil
 	s.revision++
-	info := Info{ID: s.revision, Loaded: true, Name: filepath.Base(path), Path: path, Position: position}
+	info := Info{
+		Info:               source.Input.Info,
+		ID:                 s.revision,
+		Loaded:             true,
+		MinY:               -64,
+		Height:             512,
+		BedrockFix:         !options.SkipBedrockFix,
+		StructureMemoryMiB: options.Structure.MemoryMiB,
+		StructureWorkers:   options.Structure.Workers,
+	}
 	old := s.current
 	s.current = &session{info: info, source: source, cache: map[string]*list.Element{}, order: list.New()}
 	if old != nil {
 		old.source.Close()
 	}
+	s.broadcastLocked(event{Type: "world", World: &info})
 	return info, nil
 }
 
@@ -118,30 +171,63 @@ func (s *Server) Open(path string) (Info, error) {
 func (s *Server) Info() Info {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.current.info
+	return s.infoLocked()
+}
+
+// infoLocked 在同一锁内取得世界、诊断和连接状态，供 HTTP 与 SSE 共用。
+func (s *Server) infoLocked() Info {
+	info := s.current.info
+	if info.Scene != nil {
+		info.BedrockFix = !s.Options.SkipBedrockFix
+		info.StructureMemoryMiB = s.Options.Structure.MemoryMiB
+		info.StructureWorkers = s.Options.Structure.Workers
+	}
+	if source, ok := s.current.source.(interface{ ClippedSections() int }); ok {
+		info.ClippedSections = source.ClippedSections()
+	}
+	if s.connection != nil {
+		connection := *s.connection
+		info.Connection = &connection
+	}
+	if source, ok := s.current.source.(*linksource.World); ok {
+		stats := source.Statistics()
+		info.LinkStats = &stats
+	}
+	return info
 }
 
 // Close 关闭当前存档并建立新的 Möbius 会话，旧会话请求随即失效。
 func (s *Server) Close() {
+	s.openMu.Lock()
+	defer s.openMu.Unlock()
+	s.stopLink()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.current != nil {
 		s.current.source.Close()
 	}
+	s.connection = nil
+	s.camera = nil
 	s.revision++
 	scene := mobius.Opening()
 	s.current = &session{
 		info: Info{
-			ID:       s.revision,
-			Loaded:   true,
-			Name:     "Möbius",
-			Position: scene.Camera.Position,
-			Scene:    scene,
+			ID:                 s.revision,
+			Loaded:             true,
+			Info:               worldinput.Info{Name: "Möbius", Position: scene.Camera.Position},
+			MinY:               -64,
+			Height:             512,
+			BedrockFix:         !s.Options.SkipBedrockFix,
+			StructureMemoryMiB: s.Options.Structure.MemoryMiB,
+			StructureWorkers:   s.Options.Structure.Workers,
+			Scene:              scene,
 		},
 		source: s.builtin,
 		cache:  map[string]*list.Element{},
 		order:  list.New(),
 	}
+	info := s.infoLocked()
+	s.broadcastLocked(event{Type: "world", World: &info})
 }
 func writeJSON(w http.ResponseWriter, value any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -151,23 +237,44 @@ func queryInt(r *http.Request, name string) (int, error) {
 	return strconv.Atoi(r.URL.Query().Get(name))
 }
 
-// Handler 让内置场景与 Java 存档使用相同接口，并提供公共渲染资源。
+// Handler 让内置场景与文件来源使用相同接口，并提供公共渲染资源。
 func (s *Server) Handler(web fs.FS) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/events", s.events)
+	mux.HandleFunc("POST /api/world/view", s.view)
+	mux.HandleFunc("POST /api/world/connect", s.connect)
 	assets, _ := fs.Sub(r2.Files, "assets")
 	core, _ := fs.Sub(r2.Files, "web")
 	mux.Handle("/r2/assets/", http.StripPrefix("/r2/assets/", http.FileServerFS(assets)))
 	mux.Handle("/r2/", http.StripPrefix("/r2/", http.FileServerFS(core)))
 	mux.HandleFunc("GET /api/world", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, s.Info()) })
 	mux.HandleFunc("POST /api/world/open", func(w http.ResponseWriter, r *http.Request) {
-		var request struct {
-			Path string `json:"path"`
-		}
+		var request OpenOptions
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		info, err := s.Open(request.Path)
+		streaming := strings.Contains(r.Header.Get("Accept"), "application/x-ndjson")
+		encoder := json.NewEncoder(w)
+		if streaming {
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			request.Progress = func(progress structure.Progress) {
+				encoder.Encode(struct {
+					Type     string             `json:"type"`
+					Progress structure.Progress `json:"progress"`
+				}{Type: "progress", Progress: progress})
+				http.NewResponseController(w).Flush()
+			}
+		}
+		info, err := s.Open(r.Context(), request)
+		if streaming {
+			if err != nil {
+				encoder.Encode(map[string]any{"type": "error", "message": err.Error()})
+			} else {
+				encoder.Encode(map[string]any{"type": "world", "world": info})
+			}
+			return
+		}
 		if err != nil {
 			http.Error(w, err.Error(), 400)
 			return
@@ -227,7 +334,12 @@ func (s *Server) read(w http.ResponseWriter, r *http.Request, build func(*sessio
 		http.Error(w, "存档已经切换", 409)
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	value, err := build(s.current)
+	w.Header().Set("X-R2-Version", strconv.FormatUint(s.current.version, 10))
+	if source, ok := s.current.source.(interface{ ClippedSections() int }); ok {
+		w.Header().Set("X-R2-Clipped-Sections", strconv.Itoa(source.ClippedSections()))
+	}
 	s.mu.RUnlock()
 	if err != nil {
 		http.Error(w, err.Error(), 500)

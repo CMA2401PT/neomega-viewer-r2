@@ -33,7 +33,7 @@ fs.mkdirSync(out, { recursive: true });
       await page.request.post(base + "/api/world/close");
       await page.goto(base);
       await page.waitForFunction(() => globalThis.viewerR2);
-      assert.equal(await page.locator("#world-name").textContent(), "Möbius");
+      assert.equal(await page.locator("#world-label").textContent(), "Möbius");
       assert.equal(await page.locator("#map-open").isEnabled(), true);
       const opening = await page.evaluate(() => viewerR2.state);
       assert(opening.world.loaded && opening.world.scene);

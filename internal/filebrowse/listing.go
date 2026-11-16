@@ -2,6 +2,7 @@
 package filebrowse
 
 import (
+	"neomega-converter-core/worldinput"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,17 +10,23 @@ import (
 	"strings"
 )
 
+// Entry 的可打开状态来自服务端，页面不按后缀猜测存档类型。
 type Entry struct {
-	Name  string `json:"name"`
-	Path  string `json:"path"`
-	World bool   `json:"world"`
-	Pack  bool   `json:"pack"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Directory bool   `json:"directory"`
+	Kind      string `json:"kind"`
+	Openable  bool   `json:"openable"`
 }
+
+// Listing 同时返回选中的文件与所在目录，粘贴文件路径后仍可浏览相邻来源。
 type Listing struct {
-	Path    string  `json:"path"`
-	Parent  string  `json:"parent"`
-	Roots   []Entry `json:"roots"`
-	Entries []Entry `json:"entries"`
+	Kind     string  `json:"kind"`
+	Path     string  `json:"path"`
+	Parent   string  `json:"parent"`
+	Selected string  `json:"selected"`
+	Roots    []Entry `json:"roots"`
+	Entries  []Entry `json:"entries"`
 }
 
 // List 由 Go 处理盘符、父目录和符号链接，网页只使用返回的完整路径。
@@ -35,11 +42,19 @@ func List(path string, packs bool) (Listing, error) {
 	if err != nil {
 		return Listing{}, err
 	}
+	selected := ""
+	if stat, err := os.Stat(path); err == nil && !stat.IsDir() {
+		selected, path = path, filepath.Dir(path)
+	}
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return Listing{}, err
 	}
-	out := Listing{Path: path, Parent: filepath.Dir(path), Entries: []Entry{}, Roots: []Entry{{Name: "主目录", Path: home}}}
+	out := Listing{Selected: selected, Path: path, Parent: filepath.Dir(path), Entries: []Entry{}, Roots: []Entry{{Name: "主目录", Path: home}}}
+	out.Kind = worldinput.DirectoryKind(path)
+	if selected != "" && worldinput.FileKind(selected) != "level" {
+		out.Kind = worldinput.FileKind(selected)
+	}
 	if runtime.GOOS == "windows" {
 		for c := 'A'; c <= 'Z'; c++ {
 			root := string(c) + ":\\"
@@ -56,16 +71,30 @@ func List(path string, packs bool) (Listing, error) {
 		if err != nil {
 			continue
 		}
-		if !stat.IsDir() {
-			if packs && strings.EqualFold(filepath.Ext(full), ".zip") {
-				out.Entries = append(out.Entries, Entry{Name: entry.Name(), Path: full, Pack: true})
+		value := Entry{Name: entry.Name(), Path: full, Directory: stat.IsDir()}
+		if packs {
+			if stat.IsDir() {
+				_, err := os.Stat(filepath.Join(full, "assets"))
+				value.Kind, value.Openable = "folder", err == nil
+				if value.Openable {
+					value.Kind = "texture"
+				}
+			} else if strings.EqualFold(filepath.Ext(full), ".zip") {
+				value.Kind, value.Openable = "texture", true
+			} else {
+				continue
 			}
-			continue
+		} else if stat.IsDir() {
+			value.Kind = worldinput.DirectoryKind(full)
+			value.Openable = value.Kind != "folder"
+		} else {
+			value.Kind = worldinput.FileKind(full)
+			if value.Kind == "unknown" {
+				continue
+			}
+			value.Openable = true
 		}
-		_, packErr := os.Stat(filepath.Join(full, "assets"))
-		_, levelErr := os.Stat(filepath.Join(full, "level.dat"))
-		_, regionErr := os.Stat(filepath.Join(full, "region"))
-		out.Entries = append(out.Entries, Entry{Name: entry.Name(), Path: full, World: levelErr == nil && regionErr == nil, Pack: packs && packErr == nil})
+		out.Entries = append(out.Entries, value)
 	}
 	slices.SortFunc(out.Entries, func(a, b Entry) int { return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
 	return out, nil

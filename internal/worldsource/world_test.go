@@ -1,4 +1,4 @@
-package javaworld
+package worldsource
 
 import (
 	"celler"
@@ -7,8 +7,10 @@ import (
 	"context"
 	"encoding/binary"
 	"neomega-blocks/ir"
+	"neomega-converter-core/worldinput"
 	nbt "neomega-nbt/presets/v1"
 	r2 "neomega-r2"
+	"neomega-viewer-r2/internal/worlddata"
 	"testing"
 )
 
@@ -44,7 +46,7 @@ func TestWorldPaletteTransport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	world, err := OpenWorld(path, StateMapping(catalog))
+	world, err := Open(context.Background(), Options{Options: worldinput.Options{Path: path}}, worlddata.StateMapping(catalog))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +68,7 @@ func TestWorldPaletteTransport(t *testing.T) {
 		per := 32 / int(bits)
 		palette := (read(base+sample.index/per) >> uint(sample.index%per*int(bits))) & ((1 << bits) - 1)
 		got := read(9 + int(palette))
-		want := world.mapping[string(sample.state)]
+		want := world.Mapping[string(sample.state)]
 		if got != want {
 			t.Fatalf("索引 %d 得到 %d，期望 %d", sample.index, got, want)
 		}

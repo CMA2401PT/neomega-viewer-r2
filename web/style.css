@@ -162,9 +162,34 @@ svg .fill {
   width: 26px;
 }
 #world-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   max-width: 210px;
+}
+#world-label {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* 状态跟随场景名，重连时用缓慢明暗变化保持可见而不抢占画面。 */
+#link-state {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #0b6b6b;
+}
+#link-state[data-state="connecting"],
+#link-state[data-state="reconnecting"] {
+  background: #b87914;
+  animation: link-pulse 2.4s ease-in-out infinite;
+}
+@keyframes link-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #link-state[data-state] { animation: none; }
 }
 .halo {
   color: #192b2e;
@@ -499,6 +524,13 @@ dialog {
 dialog::backdrop {
   background: rgba(32, 46, 48, 0.25);
 }
+#source-options { margin: 10px 0; }
+#source-options summary { cursor: pointer; font-size: 13px; }
+#source-options .source-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
+#source-options .setting { margin: 8px 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#source-options input:not([type="checkbox"]) { width: 120px; min-width: 0; }
+.file[aria-selected="true"] { background: #dfedeb; }
+#files { max-height: 92vh; overflow: auto; }
 .picker-title {
   display: flex;
   justify-content: space-between;
@@ -526,7 +558,7 @@ dialog::backdrop {
   display: flex;
 }
 #file-list {
-  height: min(48vh, 400px);
+  height: min(32vh, 260px);
   overflow: auto;
 }
 .file {
@@ -545,11 +577,13 @@ dialog::backdrop {
   justify-content: space-between;
   margin-bottom: 0;
 }
-#file-message {
+#file-message,
+#link-message {
   font-size: 12px;
   color: #697777;
 }
-#open-directory {
+#open-directory,
+#link-start {
   background: #dfedeb;
 }
 body.map-open #hud,
@@ -617,3 +651,8 @@ body.map-open #movepad {
     display: none;
   }
 }
+
+#source-options select { width: 180px; min-width: 0; }
+#link-dialog { width: min(520px, 90vw); }
+#link-url { flex: 1; min-width: 0; font: 12px var(--mono); }
+#link-memory { width: 120px; margin-left: auto; }

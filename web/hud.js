@@ -141,16 +141,26 @@ export function createHUD({ settings, jump, changed }) {
      */
     world(world) {
       loaded = world.loaded;
-      element("world-name").textContent = world.loaded
+      element("world-label").textContent = world.loaded
         ? world.name
         : "未打开存档";
       element("info-name").textContent = world.loaded
         ? world.name
         : "未打开存档";
       element("info-path").textContent =
-        world.path || "内置海晶灯莫比乌斯环；从文件夹按钮打开 Java 存档。";
+        world.path || world.connection?.url || "内置海晶灯莫比乌斯环；从文件夹按钮打开存档或结构文件。";
       for (const id of ["map-open", "close-world", "x", "y", "z"])
         element(id).disabled = !loaded;
+      const dimension = element("world-dimension");
+      dimension.replaceChildren(...(world.dimensions || []).map((value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = ({".":"主世界", "DIM-1":"下界", "DIM1":"末地", "0":"主世界", "1":"下界", "2":"末地"})[value] || value;
+        return option;
+      }));
+      dimension.value = world.dimension || "";
+      element("world-dimension-row").hidden = !world.path;
+      element("height-diagnostics").hidden = true;
       stopEditing();
       clearTimeout(loadingTimer);
       wasLoading = false;
@@ -167,16 +177,38 @@ export function createHUD({ settings, jump, changed }) {
         field.style.width = `${Math.max(3, field.value.length) + 0.8}ch`;
       });
     },
-    /** 只在工作待完成时显示进度，完成提示停留后淡出。
-     * @param {{pending:number,nearPending:number,loaded:number,wanted:number}} stats
+    /** 状态圆点与关闭入口跟随连接，握手期间也能停止连接并返回默认场景。
+     * @param {{state:string,url:string,message?:string}|undefined} connection
+     * @param {boolean} loaded
      */
-    loading(stats) {
-      const busy = stats.pending > 0 || stats.nearPending > 0;
+    connection(connection, loaded) {
+      const dot = element("link-state"), close = element("close-world");
+      dot.hidden = !connection;
+      if (connection) {
+        const status = {connecting:"正在连接",connected:"已连接",reconnecting:"正在重连"}[connection.state];
+        dot.dataset.state = connection.state;
+        dot.title = `${status} · ${connection.url}${connection.message ? "\n" + connection.message : ""}`;
+        dot.setAttribute("aria-label", dot.title);
+      }
+      close.disabled = !loaded && !connection;
+      close.title = connection ? "断开连接，返回 Möbius" : "关闭来源";
+      close.setAttribute("aria-label", connection ? "断开连接" : "关闭来源");
+    },
+    /** 重连提示与加载进度共用位置，恢复连接后继续显示加载进度并正常淡出。
+     * @param {{pending:number,nearPending:number,loaded:number,wanted:number}} stats
+     * @param {{state:string}|undefined} connection
+     */
+    loading(stats, connection) {
+      const waiting = connection && connection.state !== "connected";
+      const busy = waiting || stats.pending > 0 || stats.nearPending > 0;
       if (busy) {
         clearTimeout(loadingTimer);
         element("loading").classList.remove("faded");
-        element("loading").textContent =
-          `近景对象准备 ${stats.nearPending} 区域 · 远景覆盖 ${stats.loaded}/${stats.wanted}`;
+        element("loading").textContent = waiting
+          ? connection.state === "reconnecting"
+            ? "连接已断开，保留最后画面；每 3 秒重试"
+            : "正在连接数据源…"
+          : `近景对象准备 ${stats.nearPending} 区域 · 远景覆盖 ${stats.loaded}/${stats.wanted}`;
       } else if (wasLoading) {
         element("loading").textContent = "已加载";
         loadingTimer = setTimeout(

@@ -1,10 +1,10 @@
-# neomega-viewer-r2：Java 存档射线浏览器
+# neomega-viewer-r2：存档射线浏览器
 
-这个应用把 Java 存档读取、流式调度和 R2 统一射线核心组合成可运行的浏览器。整个可见范围使用完整静态模型，包括栏杆、楼梯、花和跨格模型。近景额外启用已注册的 effector、block actor；静态形状不随近景距离改变。Go 对静态区域只做调色板映射。
+这个应用把 Java／Bedrock 存档读取、流式调度和 R2 统一射线核心组合成可运行的浏览器。整个可见范围使用完整静态模型，包括栏杆、楼梯、花和跨格模型。近景额外启用已注册的 effector、block actor；静态形状不随近景距离改变。Go 对静态区域只做调色板映射。
 
 启动后显示内置默认场景 **Möbius**：海晶灯组成的莫比乌斯环立在无限海面上，夜幕中的月亮和灯环倒影共同构成开场画面。服务端把灯环作为普通方块来源，浏览器沿用存档的区域流式加载与地图；海面由渲染器按解析平面绘制。
 
-屏幕底部悬浮的工具栏（HUD）提供打开存档、坐标和设置，其中文件夹图标用于选择服务端机器上的 Java 存档目录，存档以只读方式打开。应用支持主世界，存档初始相机来自 `level.dat` 中的出生点，并向上偏移 12 格。关闭存档会重新进入 Möbius 的开场视角和夜间时刻。
+屏幕底部悬浮的工具栏（HUD）提供来源选择、坐标和设置。文件夹按钮可以打开服务端机器上的 Java／Bedrock 世界目录、`level.dat`、Java PackFS 单文件和结构文件。原生存档与 PackFS 均只读打开。关闭存档会回到 Möbius 的开场视角和夜间时刻。
 
 ## 启动与使用
 
@@ -16,12 +16,40 @@ go run ./apps/neomega-viewer-r2/cmd/viewer -listen 127.0.0.1:2412
 
 启动终端先显示准备阶段，包括读取模型目录和建立方块状态映射，完成后显示 WebUI 地址并打开默认浏览器。`-browser=false` 只显示地址，适合远程运行或浏览器验收。`-version` 打印版本后退出。
 
-浏览器访问 <http://127.0.0.1:2412>。存档目录需包含 `level.dat` 和 `region`。也可启动时直接打开：
+浏览器访问 <http://127.0.0.1:2412>。Java 世界按维度的 `region` 目录读取，Bedrock 世界按 `db` 目录读取。也可启动时直接打开：
 
 ```sh
 go run ./apps/neomega-viewer-r2/cmd/viewer \
   -listen 127.0.0.1:2412 -world '/path/to/java-world'
 ```
+
+来源选择面板把“选择文件”和“打开”分开，方便在转换前展开选项，设置维度、Bedrock 邻接修复、结构转换内存预算与写出并发。双击目录进入其中，选择结构文件后点击“打开所选来源”；转换期间面板按读取、写出或解包阶段显示进度，关闭面板会取消转换。
+
+打开面板的维度使用下拉选择。首次选择 Java 来源时先打开主世界，服务端返回扫描结果后可在场景信息里切换；Bedrock 直接提供三个标准维度。Java 维度使用存档内相对目录，标准维度是 `.`、`DIM-1`、`DIM1`，自定义维度使用 `dimensions/<命名空间>/<路径>`。打开时扫描可用维度并放进场景信息的下拉框。Bedrock 固定提供 `0`（主世界）、`1`（下界）、`2`（末地）。切换维度重新打开同一来源。相机优先使用出生点上方 12 格；出生点所在区块不存在时，落到所选维度已有内容附近。Bedrock 出生点 Y 超出维度范围时，从出生点区块的最高非空气 section 估算落点。
+
+结构文件先生成可随机读取的世界：`.schem`、`.schematic`、`.litematic`、`.nbt` 生成 Java 存档，`.mcstructure`、`.mcworld` 生成 Bedrock 存档。输出在源文件旁去掉扩展名的同名目录，例如 `城堡.schem` → `城堡/`。已有存档直接复用；非空的其他目录报错并保留原内容。源文件更新后，移走旧输出目录再打开即可重新转换。场景信息会显示实际输出路径和复用状态。
+
+结构转换默认工作预算为 512 MiB，`-structure-memory-mib` 可调整，最小 64；`-structure-workers` 指定写出并发上限，默认 0 由 CPU 和预算决定。Bedrock 默认按邻居修复栅栏连接、楼梯拐角等属性，`-bedrock-fix=false` 可以关闭。修复只影响内存中的 Java 状态。网页打开选项默认采用启动参数。
+
+```sh
+go run ./apps/neomega-viewer-r2/cmd/viewer \
+  -world '/path/to/world.pack' -dimension DIM-1
+go run ./apps/neomega-viewer-r2/cmd/viewer \
+  -world '/path/to/bedrock-world' -dimension 1 -bedrock-fix=false
+go run ./apps/neomega-viewer-r2/cmd/viewer \
+  -world '/path/to/城堡.schem' -structure-memory-mib 1024 -structure-workers 4
+```
+
+渲染窗口固定为 Y `[-64,448)`。越界 section 不显示，但世界可以正常打开。场景信息显示“有 N 个 section 超出可显示高度”，按实际读取过的区块去重计数；重复下载不会重复累计。文件会话中的 `minY=-64`、`height=512` 描述这个窗口。连接会话保留来源声明的高度，实际显示仍使用同一个固定窗口。
+
+数据源可以通过 R2Link 持续推送方块。HUD 的链接图标按钮（“连接数据源”）接收 `tcp://`、`ws://` 或 `wss://` 地址；R2 主动连接监听该地址的数据源。连接面板可选择 Bedrock 修复和内存预算，默认 512 MiB。启动参数也可以直接连接：
+
+```sh
+go run ./apps/neomega-viewer-r2/cmd/viewer \
+  -connect tcp://127.0.0.1:2414 -connect-memory-mib 512
+```
+
+`-world` 与 `-connect` 二选一。握手成功后才切换来源，断线保留最后画面并每 3 秒重连，成功重连建立新世界。场景名旁的圆点表示连接状态：深青色表示已连接，缓慢闪烁的琥珀色表示正在连接或重连，悬停可查看地址。重连文字沿用顶部加载提示。HUD 的关闭来源按钮停止重连并返回 Möbius。数据源可以移动相机或重置场景；方块更新只替换受影响区域，当前位置保持不变。连接世界的占用地图表示当前保留区块。协议、命名、双层数据和可运行示例见 [R2Link 数据源说明](docs/r2link.md)。
 
 拖动转向，WASD 按相机的水平朝向前后左右移动，抬头低头不改变移动高度。空格沿 Y 轴上升，Shift 沿 Y 轴下降。滚轮沿视线前后移动，按住 Shift 滚动时加大步长。点击底部 X、Y、Z 读数即可编辑，回车或箭头按钮跳转，Esc 或点到别处放弃编辑。存档名打开场景信息，齿轮打开设置，面板位于触发按钮上方。默认场景和存档均可飞行、使用地图和调整光照。设置保存在浏览器本地。
 
@@ -78,7 +106,7 @@ curl -X POST http://127.0.0.1:2412/api/textures \
 
 ## 为什么移动不必重新加载整个窗口
 
-网页从 `GET /api/world` 获取当前会话。`loaded: true` 表示存在可加载的来源，存档与内置场景都满足这一点。内置场景的 `name` 为 `Möbius`、`path` 为空，并额外携带 `scene`：`ocean` 是海面 Y 坐标，`camera` 包含 `position`、`yaw`、`pitch`，角度使用弧度，`time` 以小时表示开场时刻。顶层 `position` 与开场相机位置一致。存档响应省略 `scene`。`POST /api/world/open` 与 `POST /api/world/close` 都返回新的会话描述，关闭会恢复内置场景；区域、对象与占用表接口共用会话编号，旧编号返回 HTTP 409。
+网页从 `GET /api/world` 获取当前会话。`loaded: true` 表示存在可加载的来源，存档与内置场景都满足这一点。内置场景的 `name` 为 `Möbius`、`path` 为空，并额外携带 `scene`：`ocean` 是海面 Y 坐标，`camera` 包含 `position`、`yaw`、`pitch`，角度使用弧度，`time` 以小时表示开场时刻。顶层 `position` 与开场相机位置一致。存档响应省略 `scene`。`POST /api/world/open` 接收 `path`、`dimension`、`bedrockFix`、`structureMemoryMiB`、`structureWorkers`。默认返回 JSON 会话描述；请求头 `Accept: application/x-ndjson` 时逐行返回 `progress` 消息，最后返回 `world` 或 `error`。`POST /api/world/close` 返回 Möbius 会话描述，关闭会恢复内置场景；区域、对象与占用表接口共用会话编号，旧编号返回 HTTP 409。
 
 服务启动时建立一次“Java 状态 → 静态模型编号”映射。区域接口读取和解压存档，仅转换调色板条目，保留压缩格子索引，不生成模型、剔面或合并网格。一个区域包含 8×8 区块；服务端保留最多约 64 MiB 的区域响应缓存。Möbius 的方块和区域字节在首次读取时生成一次，之后各会话复用；它与存档共用二进制编码，对象列表为空。
 
@@ -88,11 +116,14 @@ curl -X POST http://127.0.0.1:2412/api/textures \
 
 | 位置 | 责任 |
 |---|---|
-| `internal/javaworld/` | 只读 Java 主世界、压缩调色板传输；独立的近景对象读取入口。 |
+| `neomega-converter-core/worldinput/` | 两个 viewer 共用的路径识别、结构准备、维度扫描、原生只读句柄与读取关闭屏障。 |
+| `internal/worldsource/` | 将原生来源接到 Java 区块；为 Bedrock 组合转换器和可选 fixer。 |
 | `internal/mobius/` | 海晶灯莫比乌斯环、开场取景与只读场景缓存。 |
-| `internal/worlddata/` | 存档与内置场景共用的压缩区域编码和地图占用表编码。 |
-| `internal/server/` | 来源会话、区域缓存、请求并发与 HTTP。切换场景后拒绝旧会话请求。 |
-| `internal/filebrowse/` | 服务端文件浏览、Java 目录识别与材质包选择。 |
+| `internal/worlddata/` | Java 区块的公共区域适配、近景对象、固定高度裁剪，以及内置场景共用的区域和地图编码。 |
+| `internal/linksource/` | 内存区块快照、转换修复、范围淘汰和预算提交。 |
+| `r2link/` | 数据源可复用的 TCP/WS 分帧、JSON 头和二进制索引编解码。 |
+| `internal/server/` | 来源会话、区域缓存、HTTP、SSE 页面登记与连接重试。切换场景后拒绝旧会话请求。 |
+| `internal/filebrowse/` | 服务端文件浏览、各类来源识别与材质包选择。 |
 | `web/stream.js` | 可见范围、下载取消、近远景更新、逐区发布与卸载。 |
 | `web/app.js` | 会话、材质包与照片组装，同一绘制和累积循环。 |
 | `web/hud.js`、`overlay.js` | 坐标编辑、弹出面板、时间控件、坐标轴和临时读数。 |
@@ -101,15 +132,19 @@ curl -X POST http://127.0.0.1:2412/api/textures \
 | `web/picker.js` | 服务端存档和材质包目录选择。 |
 | `neomega-r2/web/` | 共享模型、纯数据场景准备、GPU 目录与统一求交。 |
 
-本应用不依赖旧 viewer 或 viewer-core。核心的 Go 代码也不反向依赖存档库。远景与近景使用同一份来源索引，但 NBT 外观与特效仅由近景对象接口处理。
+本应用通过 converter 组合 viewer-core 的 fixer。核心 neomega-r2 保持独立，只接收 Java 状态对应的静态模型编号。远景与近景使用同一份来源索引，但 NBT 外观与特效仅由近景对象接口处理。
+
+连接通知使用服务级 `GET /api/events` SSE。页面标识在连接时分配，SSE 断开即注销；`POST /api/world/view` 只在相机或实际保留范围变化时上报。多个页面范围取并集，Bedrock 修复再增加两圈区块。数据提交与缓存失效共用内容锁，通知约每 50 ms 合并一次。HTTP 响应的 `X-R2-Version` 是会话提交编号；网页同时使用本地请求编号丢弃迟到下载和后台准备结果。SSE 重连后重新同步当前保留区域。
+
+`worldSource` 的四个方法保持不变。内存来源与文件来源共用 `worlddata`；动态来源自己的诊断随替换、删除和淘汰更新。核心的区域替换能力直接复用，worker 只增加请求编号的回传。`scene.reset` 建立新会话，省略相机时保留页面各自视角；连接管理器独立于内存世界，因此重置场景会继续使用同一个传输。
 
 ## 特殊对象的扩展位置
 
-Go 入口 `cmd/viewer/main.go` 选择需要启用的 effector 和 block actor 处理器。`internal/javaworld.World.Objects` 仅扫描近景中被处理器认领的方块，将状态、位置和 NBT 交给它们。浏览器入口 `web/app.js` 注册对应类型的外观工厂。工厂返回部件、贴图、包围盒和动画，公共实例层负责格子候选与射线绘制。
+Go 入口 `cmd/viewer/main.go` 选择需要启用的 effector 和 block actor 处理器。`internal/worlddata.World.Objects` 仅扫描近景中被处理器认领的方块，将状态、位置和 NBT 交给它们。浏览器入口 `web/app.js` 注册对应类型的外观工厂。工厂返回部件、贴图、包围盒和动画，公共实例层负责格子候选与射线绘制。
 
 附魔台的活动书已通过这条链路接入。block actor 的处理器和传输接口已连通，并通过携带 NBT 的测试处理器验证；旗帜图案、告示牌排版等具体实现尚未添加。详细契约和新增实现的方法见 [核心说明](../../neomega-r2/README.md#怎样添加-effector-和-block-actor)。含水方块暂只显示本体，不显示附加水层。
 
-区域池预留 256 MiB，缩小视距回收池内地址，切换场景时释放旧池，并为新来源重新建立池。远景半径超过 48 时，密集存档可能超出容量，此时会显示错误，可降低远景视距。当前流式更新指相机移动、视距改变和存档切换，不监听磁盘上正在被游戏写入的内容；查看外部修改需重新打开存档。
+区域池预留 256 MiB，缩小视距回收池内地址，切换场景时释放旧池，并为新来源重新建立池。远景半径超过 48 时，密集存档可能超出容量，此时会显示错误，可降低远景视距。文件会话按相机流式读取固定内容，查看磁盘上的外部修改需重新打开。连接会话的提交直接使区域缓存失效，经 SSE 通知网页重新下载；相机、视距和场景切换沿用相同的准备与发布流程。
 
 ## 构建与验收
 

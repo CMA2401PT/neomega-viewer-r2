@@ -5,12 +5,14 @@ import (
 	"celler"
 	"celler/java"
 	"celler/layer_storage"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -21,7 +23,7 @@ import (
 	"neomega-r2/blockactor"
 	"neomega-r2/effector"
 	"neomega-r2/object"
-	"neomega-viewer-r2/internal/javaworld"
+	"neomega-viewer-r2/internal/worlddata"
 )
 
 // 测试处理器证明 NBT 会到达扩展入口，而远景请求完全不调用它。
@@ -71,7 +73,7 @@ func TestSessionAndNearObjectBoundary(t *testing.T) {
 	actors := blockactor.Registry{}
 	actors.Register(actor)
 	service := New(
-		javaworld.StateMapping(catalog),
+		worlddata.StateMapping(catalog),
 		effector.Registry{"minecraft:enchanting_table": effector.Kind("enchanting_book")},
 		actors,
 	)
@@ -86,20 +88,20 @@ func TestSessionAndNearObjectBoundary(t *testing.T) {
 	if info := service.Info(); !info.Loaded || info.Scene == nil || info.Name != "Möbius" {
 		t.Fatal("启动时应加载 Möbius", info)
 	}
-	info, err := service.Open(path)
+	info, err := service.Open(context.Background(), OpenOptions{Path: path})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if info.Scene != nil {
 		t.Fatal("存档不应携带内置场景设置")
 	}
-	if info.Position != [3]float64{7, 42, -9} {
+	if info.Position != [3]float64{8, 24, 8} {
 		t.Fatalf("出生点错误：%v", info.Position)
 	}
-	if _, err = service.Open(path + "/missing"); err == nil {
+	if _, err = service.Open(context.Background(), OpenOptions{Path: path + "/missing"}); err == nil {
 		t.Fatal("无效存档应失败")
 	}
-	if service.Info() != info {
+	if !reflect.DeepEqual(service.Info(), info) {
 		t.Fatal("打开失败改变了当前会话")
 	}
 	regionURL := fmt.Sprintf("/api/world/region?world=%d&x=0&z=0", info.ID)
@@ -112,7 +114,7 @@ func TestSessionAndNearObjectBoundary(t *testing.T) {
 	if textures.Code != 200 {
 		t.Fatal(textures.Code, textures.Body.String())
 	}
-	if service.Info() != info {
+	if !reflect.DeepEqual(service.Info(), info) {
 		t.Fatal("材质包接口改变了存档会话")
 	}
 	wire := textures.Body.Bytes()
@@ -154,7 +156,7 @@ func TestSessionAndNearObjectBoundary(t *testing.T) {
 	if request("GET", regionURL, "").Code != 409 {
 		t.Fatal("关闭后仍接受旧会话请求")
 	}
-	reopened, err := service.Open(path)
+	reopened, err := service.Open(context.Background(), OpenOptions{Path: path})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +202,7 @@ func TestWorldChunks(t *testing.T) {
 	}
 	service := New(nil, nil, nil)
 	defer service.Close()
-	info, err := service.Open(path)
+	info, err := service.Open(context.Background(), OpenOptions{Path: path})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +251,7 @@ func TestWorldChunks(t *testing.T) {
 	if cached := request(info.ID); cached.Code != 200 || !bytes.Equal(cached.Body.Bytes(), data) {
 		t.Fatal("占用表未命中会话缓存")
 	}
-	reopened, err := service.Open(path)
+	reopened, err := service.Open(context.Background(), OpenOptions{Path: path})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +273,7 @@ func TestMobiusSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mapping := javaworld.StateMapping(catalog)
+	mapping := worlddata.StateMapping(catalog)
 	service := New(mapping, nil, nil)
 	defer service.Close()
 	handler := service.Handler(fstest.MapFS{})

@@ -1,29 +1,48 @@
 // 存档与材质包共用服务端目录浏览器，路径始终由服务端返回。
-/** 文件选择器只使用服务端给出的完整路径，不在浏览器里拼接平台路径。
- * @param {(path:string)=>Promise<void>} openWorld
+/** 文件选择与打开分开，让用户在转换前选定维度、修复和预算。
+ * @param {(path:string,options?:Object,progress?:(value:Object)=>void,signal?:AbortSignal)=>Promise<void>} openWorld
  */
 export function createPicker(openWorld) {
   const dialog = document.querySelector("#files"),
     input = document.querySelector("#directory"),
     list = document.querySelector("#file-list"),
-    message = document.querySelector("#file-message");
-  let listing,
-    kind = "world",
-    onChoose = openWorld;
+    message = document.querySelector("#file-message"),
+    dimension = document.querySelector("#source-dimension"),
+    dimensions = dimension;
+  let listing, selected = "", kind = "world", onChoose = openWorld, opening, currentWorld = {};
   const paths = { world: "", pack: "" };
-  /** 浏览失败时在对话框内显示原因，允许用户修改路径重试。 @param {string} path */
+  const labels = {
+    directory: "Java 存档", bedrock: "Bedrock 存档", folder: "目录",
+    pack: "Java PackFS", texture: "材质包", level: "存档入口",
+    schem: "Java 结构 · schem", schematic: "Java 结构 · schematic",
+    litematic: "Java 结构 · litematic", nbt: "Java 结构 · nbt",
+    mcstructure: "Bedrock 结构", mcworld: "Bedrock 世界包",
+  };
+  /** Bedrock 固定三个维度，Java 首次打开主世界，再使用服务端扫描的列表。 */
+  function setDimensions(values) {
+    dimensions.replaceChildren(...values.map((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = ({"":"主世界（打开后可切换维度）", ".":"主世界", "DIM-1":"下界", "DIM1":"末地", "0":"主世界", "1":"下界", "2":"末地"})[value] || value;
+      return option;
+    }));
+  }
+  /** 浏览错误留在选择器中，用户可以修改路径继续。 @param {string} path */
   async function browse(path = "") {
     message.textContent = "正在读取目录…";
     input.disabled = true;
     document.querySelector("#open-directory").disabled = true;
     document.querySelector("#parent").disabled = true;
     try {
-      const response = await fetch(
-        "/api/files?kind=" + kind + "&path=" + encodeURIComponent(path),
-      );
+      const response = await fetch("/api/files?kind=" + kind + "&path=" + encodeURIComponent(path));
       if (!response.ok) throw Error(await response.text());
       listing = await response.json();
-      input.value = listing.path;
+      selected = listing.selected;
+      input.value = selected || listing.path;
+      setDimensions(["bedrock", "mcstructure", "mcworld"].includes(listing.kind)
+        ? ["0", "1", "2"]
+        : input.value === currentWorld.path ? currentWorld.dimensions : [""]);
+      dimension.value = input.value === currentWorld.path ? currentWorld.dimension : dimension.options[0].value;
       list.replaceChildren();
       document.querySelector("#roots").replaceChildren();
       for (const root of listing.roots) {
@@ -35,61 +54,84 @@ export function createPicker(openWorld) {
       for (const entry of listing.entries) {
         const row = document.createElement("button");
         row.className = "file";
-        const name = document.createElement("span");
+        row.setAttribute("aria-selected", String(entry.path === selected));
+        const name = document.createElement("span"), label = document.createElement("span");
         name.textContent = entry.name;
-        const kind = document.createElement("span");
-        kind.className = "kind";
-        kind.textContent = entry.pack
-          ? "材质包"
-          : entry.world
-            ? "Java 存档"
-            : "目录";
-        row.append(name, kind);
-        row.onclick = () =>
-          entry.pack || entry.world ? choose(entry.path) : browse(entry.path);
+        label.className = "kind";
+        label.textContent = labels[entry.kind] || entry.kind;
+        row.append(name, label);
+        row.onclick = () => {
+          if (!entry.openable) return browse(entry.path);
+          selected = input.value = entry.path;
+          for (const other of list.children) other.setAttribute("aria-selected", String(other === row));
+          const sourceKind = entry.kind === "level" ? listing.kind : entry.kind;
+          setDimensions(["bedrock", "mcstructure", "mcworld"].includes(sourceKind)
+            ? ["0", "1", "2"] : entry.path === currentWorld.path ? currentWorld.dimensions : [""]);
+          message.textContent = "已选择 " + entry.name;
+        };
+        row.ondblclick = () => entry.directory ? browse(entry.path) : choose(entry.path);
         list.append(row);
       }
       message.textContent = listing.entries.length + " 个项目";
-    } catch (error) {
-      message.textContent = String(error);
-    } finally {
+    } catch (error) { message.textContent = String(error); }
+    finally {
       input.disabled = false;
       document.querySelector("#open-directory").disabled = false;
       document.querySelector("#parent").disabled = !listing;
     }
   }
-  /** 保持对话框直到存档打开或贴图应用完成。 @param {string} path */
+  /** 进度来自转换器的阶段，不能把读取字节进度当作整个转换的完成比例。 */
+  function progress(value) {
+    const stages = {reading:"读取结构", writing:"写出区块", extracting:"解包世界", finishing:"发布存档", complete:"转换完成"};
+    message.textContent = `${stages[value.stage] || value.stage} ${value.total ? Math.round(value.completed / value.total * 100) + "%" : value.completed || ""}`;
+  }
+  /** 保持对话框直到来源准备完成，关闭对话框会取消仍在进行的转换。 @param {string} path */
   async function choose(path) {
-    message.textContent = kind === "pack" ? "正在合成材质包…" : "正在打开存档…";
+    message.textContent = kind === "pack" ? "正在合成材质包…" : "正在打开来源…";
+    opening = new AbortController();
+    document.querySelector("#open-directory").disabled = true;
     try {
-      await onChoose(path);
+      if (kind === "pack") await onChoose(path);
+      else await onChoose(path, {
+        dimension: dimension.value,
+        bedrockFix: document.querySelector("#source-fix").checked,
+        structureMemoryMiB: Number(document.querySelector("#source-memory").value),
+        structureWorkers: Number(document.querySelector("#source-workers").value),
+      }, progress, opening.signal);
       paths[kind] = path;
+      opening = null;
       dialog.close();
     } catch (error) {
-      message.textContent = String(error);
+      if (error.name !== "AbortError") message.textContent = String(error);
+    } finally {
+      opening = null;
+      document.querySelector("#open-directory").disabled = false;
     }
   }
+  dialog.addEventListener("close", () => opening?.abort());
   document.querySelector("#browse").onclick = () => browse(input.value);
+  input.addEventListener("input", () => { setDimensions([""]); });
   input.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      browse(input.value);
-    }
+    if (event.key === "Enter") { event.preventDefault(); browse(input.value); }
   });
   document.querySelector("#parent").onclick = () => browse(listing.parent);
   document.querySelector("#open-directory").onclick = () => choose(input.value);
-  return ({ kind: nextKind = "world", choose: callback = openWorld } = {}) => {
+  return ({ kind: nextKind = "world", choose: callback = openWorld, world = {} } = {}) => {
     kind = nextKind;
+    currentWorld = world;
     onChoose = callback;
-    dialog.querySelector("h2").textContent =
-      kind === "pack" ? "选择 Java 材质包" : "打开 Java 存档";
-    document.querySelector("#open-directory").textContent =
-      kind === "pack" ? "使用当前材质包目录" : "打开当前存档目录";
-    dialog.querySelector(".hint").textContent =
-      kind === "pack"
-        ? "选择 zip 文件或包含 assets 的材质包目录，也可直接输入完整路径。"
-        : "请选择包含 level.dat 和 region 的 Java 主世界目录。存档以只读方式打开。";
+    dimension.value = world.dimension || "";
+    setDimensions(world.dimensions || [""]);
+    document.querySelector("#source-fix").checked = world.bedrockFix ?? true;
+    document.querySelector("#source-memory").value = world.structureMemoryMiB || 512;
+    document.querySelector("#source-workers").value = world.structureWorkers || 0;
+    document.querySelector("#source-options").hidden = kind === "pack";
+    dialog.querySelector("h2").textContent = kind === "pack" ? "选择 Java 材质包" : "打开存档或结构";
+    document.querySelector("#open-directory").textContent = kind === "pack" ? "使用材质包" : "打开所选来源";
+    document.querySelector("#source-hint").textContent = kind === "pack"
+      ? "选择 zip 或包含 assets 的目录，也可直接输入路径。"
+      : "选择文件后点击打开；双击存档目录可浏览内部。结构文件转换到旁边的同名目录。";
     dialog.showModal();
-    browse(paths[kind]);
+    browse(world.path || paths[kind]);
   };
 }

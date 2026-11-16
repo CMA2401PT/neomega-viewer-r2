@@ -211,8 +211,14 @@ export class FullscreenMap {
     this.world = world;
     this.tiles = [];
     this.occupancy = null;
+    return this.refreshChunks();
+  }
+  /** 内容更新只替换占用表，地图中心和缩放保持原样。 */
+  async refreshChunks() {
+    const world = this.world, request = this.chunksRequest = (this.chunksRequest || 0) + 1;
     if (!world.loaded) return;
     const response = await fetch(`/api/world/chunks?world=${world.id}`);
+    if (this.world !== world || request !== this.chunksRequest) return;
     if (!response.ok) throw Error(await response.text());
     const buffer = await response.arrayBuffer(),
       data = new DataView(buffer),
@@ -230,7 +236,7 @@ export class FullscreenMap {
         canvas,
       });
     }
-    if (this.world === world) {
+    if (this.world === world && request === this.chunksRequest) {
       this.tiles = tiles;
       this.occupancy = null;
     }
