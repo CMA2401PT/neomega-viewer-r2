@@ -58,11 +58,11 @@ fs.mkdirSync(out, { recursive: true });
     const draw = async (fragments = true) =>
       page.evaluate((fragments) => {
         const r = viewerR2.renderer;
-        r.objects.enabled = false;
         r.draw(viewerR2.state.camera, {
           width: 1280,
           height: 720,
           time: 0,
+          objects: false,
           fragments,
         });
         const pixels = r.pixels();

@@ -1,26 +1,29 @@
+// 应用组装存档会话、飞行/地图视图与同一射线帧循环；UI 事件和投影分别放在独立模块。
 import { decodeTextures } from "/r2/render/textures.js";
 import { createRenderer } from "/r2/render/renderer.js";
 import { ObjectRegistry } from "/r2/objects/registry.js";
 import { enchantingBook } from "/r2/effects/enchanting-book.js";
 import { WorldStream } from "./stream.js";
 import { FlightControls } from "./controls.js";
+import { bindMovePad } from "./movepad.js";
 import { createPicker } from "./picker.js";
-const element = (id) => document.getElementById(id),
-  canvas = element("view"),
-  camera = { position: [0, 80, 0], yaw: -0.7, pitch: -0.32 };
+import { createHUD, element, closePopovers } from "./hud.js";
+import { drawAxes } from "./overlay.js";
+import { FullscreenMap } from "./map.js";
+
+const canvas = element("view");
+const camera = { position: [0, 80, 0], yaw: -0.7, pitch: -0.32 };
+/** @type {import("./hud.js").ViewerSettings} */
 const settings = {
-  nearRadius: 8,
-  farRadius: 48,
+  nearRadius: 2,
+  farRadius: 32,
   resolution: "native",
   speed: 32,
   shadows: true,
-  // 一天中的时刻（小时）；6 点日出，18 点日落。
   time: 10,
-  timeFlow: false,
-  // 远景雾遮住观察窗口的边界；关掉后远处的地形直接截断在天空前。
+  timeFlow: true,
   fog: true,
   stillSamples: 64,
-  // 照片相对渲染画面的倍数与每像素样本数。
   photoScale: 1,
   photoSamples: 32,
   texturePath: "",
@@ -28,174 +31,142 @@ const settings = {
   ...JSON.parse(localStorage.getItem("neomega-r2-settings") || "{}"),
 };
 const controls = new FlightControls(canvas, camera);
-// 新对象类型在此组装；工厂来自核心的独立实现目录，主循环不包含方块分支。
+bindMovePad(element("movepad"), controls);
 const registry = new ObjectRegistry().register("enchanting_book", () =>
   enchantingBook("/r2/assets/book.png"),
 );
 let renderer,
-  rendererPromise,
+  map,
   stream,
   world = { loaded: false },
-  opening = false,
-  epoch = 0,
   last = performance.now(),
-  statusAt = 0,
-  frames = [],
-  // 上一次绘制时的相机、尺寸、设置与场景版本；不变且没有可见动画时跳过绘制。
+  statusAt = 0;
+let frames = [],
   drawn = "",
   drawnAt = 0,
-  // 性能实验需要每帧都绘制，才能连续采样 GPU 时间。
   continuous = false,
-  // 正在拍的照片；拍照期间相机、场景和时间都停住，帧循环只推进它。
   photo = null;
-const showError = (message) => {
-  if (opening) return;
-  element("notice").textContent = message;
-  element("notice").hidden = false;
-};
-function setSettings() {
-  element("near-value").textContent = `${settings.nearRadius} 区块半径`;
-  element("far-value").textContent =
-    `${settings.farRadius} 区块半径（${settings.farRadius * 16} 方块）`;
-  showTime();
+const hud = createHUD({
+  settings,
+  jump: (position) => {
+    camera.position = position;
+  },
+  changed: saveSettings,
+});
+
+/** 设置持久化不参与逐帧时间推进，避免连续写入浏览器存储。 */
+function saveSettings() {
+  hud.settings();
   localStorage.setItem("neomega-r2-settings", JSON.stringify(settings));
   renderer?.resetTiming();
+  drawn = "";
 }
-for (const [id, key] of [
-  ["near-radius", "nearRadius"],
-  ["far-radius", "farRadius"],
-  ["resolution", "resolution"],
-  ["speed", "speed"],
-  ["shadows", "shadows"],
-  ["time", "time"],
-  ["time-flow", "timeFlow"],
-  ["fog", "fog"],
-  ["still-samples", "stillSamples"],
-  ["photo-scale", "photoScale"],
-  ["photo-samples", "photoSamples"],
-]) {
-  const input = element(id),
-    toggle = input.type === "checkbox";
-  if (toggle) input.checked = settings[key];
-  else input.value = String(settings[key]);
-  input.addEventListener(id === "time" ? "input" : "change", () => {
-    settings[key] = toggle
-      ? input.checked
-      : key === "resolution"
-        ? input.value
-        : Number(input.value);
-    setSettings();
-  });
-}
-// 原生倍数随系统缩放变化：Windows 100% 缩放为 1×，Mac 的 Retina 屏约为 2×。
-element("resolution").options[0].textContent =
-  `屏幕原生（${+devicePixelRatio.toFixed(2)}×）`;
-/** 远景雾接近不透明的距离：观察窗口的半径；关闭时放到无穷远。 */
-function fogDistance() {
-  return settings.fog ? settings.farRadius * 16 : Infinity;
-}
-/** 渲染像素相对窗口 CSS 像素的倍数。 */
+/** 渲染尺寸跟随原生屏幕像素或用户选择的固定倍数。 */
 function renderScale() {
   return settings.resolution === "native"
     ? devicePixelRatio
     : Number(settings.resolution);
 }
-function showTime() {
-  const minutes = Math.floor(settings.time * 60) % 1440;
-  element("time-value").textContent =
-    `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
-}
-/** 太阳沿东西方向的圆周运动，6 点从东方（+X）升起，12 点最高，18 点在西方落下；
- * 轨道略向 +Z 倾斜，正午的影子不会正好落在脚下。
+/** 太阳从东方升起，轨道略向南倾斜，使正午仍有可辨别的侧影。
  * @param {number} hours
  */
 function sunDirection(hours) {
   const angle = ((hours - 6) / 24) * 2 * Math.PI;
   return [Math.cos(angle), Math.sin(angle), 0.3];
 }
-setSettings();
+/** 切换会话时卸载旧流，关闭后继续绘制同一相机下的天空。
+ * @param {{loaded:boolean,id?:number,name?:string,path?:string,position?:number[]}} info
+ */
 async function useWorld(info) {
-  const version = ++epoch;
+  if (photo) await finishPhoto(false);
   stream?.dispose();
   stream = null;
   world = info;
-  element("world-name").textContent = info.loaded ? info.name : "未打开存档";
-  element("empty").hidden = info.loaded;
-  element("loading").textContent = "";
-  element("notice").hidden = true;
-  if (!info.loaded) {
-    if (renderer) {
-      renderer.clear();
-      renderer.gl.clearColor(0.063, 0.09, 0.114, 1);
-      renderer.gl.clear(renderer.gl.COLOR_BUFFER_BIT);
-    }
-    return;
-  }
-  element("loading").textContent = "正在加载共享模型…";
-  if (!renderer) renderer = await (rendererPromise ??= (async () => {
-    const instance = await createRenderer(canvas);
-    if (settings.texturePath || settings.textureSize !== 128) {
-      try { instance.setTextures(await loadTextures(settings.texturePath, settings.textureSize)); }
-      catch (error) { element("texture-status").textContent = String(error); }
-    }
-    return instance;
-  })());
-  if (version !== epoch) return;
-  camera.position = [...info.position];
-  camera.yaw = -0.7;
-  camera.pitch = -0.32;
-  stream = new WorldStream({
-    renderer,
-    world: info,
-    registry,
-    onError: showError,
-  });
-  stream.update(camera.position, settings);
-  frames = [];
-}
-async function openWorld(path) {
-  opening = true;
-  element("loading").textContent = "正在打开 Java 存档…";
-  try {
-    const response = await fetch("/api/world/open", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path }),
+  closePopovers();
+  hud.world(info);
+  map.setWorld(info).catch((error) => hud.error(String(error)));
+  if (info.loaded) {
+    camera.position = [...info.position];
+    camera.yaw = -0.7;
+    camera.pitch = -0.32;
+    stream = new WorldStream({
+      renderer,
+      world: info,
+      registry,
+      onError: (message) => hud.error(message),
     });
-    if (!response.ok) throw Error(await response.text());
-    await useWorld(await response.json());
-  } finally {
-    opening = false;
-  }
+    stream.update(camera.position, settings);
+  } else renderer.clear();
+  frames = [];
+  drawn = "";
 }
+/** 目录选择器与验收入口共用同一存档打开操作。
+ * @param {string} path
+ */
+async function openWorld(path) {
+  const response = await fetch("/api/world/open", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  if (!response.ok) throw Error(await response.text());
+  await useWorld(await response.json());
+}
+saveSettings();
+renderer = await createRenderer(canvas);
+map = new FullscreenMap({
+  renderer,
+  camera,
+  jump: (position) => {
+    camera.position = position;
+  },
+});
+
 const picker = createPicker(openWorld);
-/** 请求由核心合成的完整资源；应用只传路径和尺寸设置。
+element("open-world").onclick = () => {
+  closePopovers();
+  picker();
+};
+element("close-world").onclick = async () => {
+  const response = await fetch("/api/world/close", { method: "POST" });
+  if (!response.ok) return hud.error(await response.text());
+  await useWorld(await response.json());
+};
+/** 核心负责材质包合成，应用只传入路径与尺寸上限。
  * @param {string} path @param {number} maxSize
  */
 async function loadTextures(path, maxSize) {
   const response = await fetch("/api/textures", {
-    method: "POST", headers: { "Content-Type": "application/json" },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path, maxSize }),
   });
   if (!response.ok) throw Error(await response.text());
   return decodeTextures(await response.arrayBuffer());
 }
-/** 切换期间旧场景继续绘制，完成后保持相机和存档会话。 */
+/** 旧场景持续显示，贴图和透明度目录准备好后一起切换。
+ * @param {string} path
+ */
 async function applyTextures(path) {
-  const buttons = ["texture-browse", "texture-apply", "texture-reset", "texture-size"];
+  const buttons = [
+    "texture-browse",
+    "texture-apply",
+    "texture-reset",
+    "texture-size",
+  ];
   for (const id of buttons) element(id).disabled = true;
   element("texture-status").textContent = "正在合成贴图与透明度数据…";
   const maxSize = Number(element("texture-size").value);
   try {
     const set = await loadTextures(path, maxSize);
     if (stream) await stream.setTextures(set);
-    else renderer?.setTextures(set);
+    else renderer.setTextures(set);
     settings.texturePath = path;
     settings.textureSize = maxSize;
     element("texture-path").value = path;
-    element("texture-status").textContent = `${path ? "材质包" : "原版"} · ${set.info.side}×${set.info.side} · ${set.info.levels} 级 mip`;
-    setSettings();
-    drawn = "";
+    element("texture-status").textContent =
+      `${path ? "材质包" : "原版"} · ${set.info.side}×${set.info.side} · ${set.info.levels} 级 mip`;
+    saveSettings();
   } catch (error) {
     element("texture-status").textContent = String(error);
     throw error;
@@ -205,14 +176,22 @@ async function applyTextures(path) {
 }
 element("texture-path").value = settings.texturePath;
 element("texture-size").value = String(settings.textureSize);
-element("texture-browse").onclick = () => picker({ kind: "pack", choose: applyTextures });
-element("texture-apply").onclick = () => applyTextures(element("texture-path").value).catch(showError);
-element("texture-reset").onclick = () => applyTextures("").catch(showError);
-element("texture-size").onchange = () => applyTextures(settings.texturePath).catch(showError);
-/** 按当前画面参数开始拍照；正在拍时再按一次取消。 */
+element("texture-browse").onclick = () =>
+  picker({ kind: "pack", choose: applyTextures });
+element("texture-apply").onclick = () =>
+  applyTextures(element("texture-path").value).catch((error) =>
+    hud.error(String(error)),
+  );
+element("texture-reset").onclick = () =>
+  applyTextures("").catch((error) => hud.error(String(error)));
+element("texture-size").onchange = () =>
+  applyTextures(settings.texturePath).catch((error) =>
+    hud.error(String(error)),
+  );
+
+// 拍照使用独立缓冲，不把 HUD 或标记写入照片。
 element("photo").onclick = () => {
-  if (photo) return finishPhoto();
-  if (!world.loaded || !renderer) return;
+  if (photo) return finishPhoto(false);
   const scale = renderScale() * settings.photoScale;
   photo = renderer.photograph(camera, {
     width: Math.round(innerWidth * scale),
@@ -221,155 +200,177 @@ element("photo").onclick = () => {
     time: performance.now() / 1000,
     shadows: settings.shadows,
     sun: sunDirection(settings.time),
-    fog: fogDistance(),
+    fog: settings.fog ? settings.farRadius * 16 : Infinity,
   });
-  photo.name = `${world.name}-${new Date().toTimeString().slice(0, 8).replaceAll(":", "")}.png`;
+  photo.name = `${world.name || "天空"}-${new Date().toTimeString().slice(0, 8).replaceAll(":", "")}.png`;
+  element("photo").setAttribute("aria-pressed", "true");
+  element("photo").title = element("photo").ariaLabel = "取消拍照";
+  element("photo-progress").hidden = false;
 };
-/** 结束拍照；完成时下载 PNG，取消时直接丢弃。 */
-async function finishPhoto() {
+/** 完成后下载，取消时直接释放照片缓冲；编码期间继续冻结场景。
+ * @param {boolean} download
+ */
+async function finishPhoto(download) {
   const job = photo;
-  photo = null;
-  element("photo").textContent = "拍照";
-  if (job.progress === 1) {
+  job.finishing = true;
+  if (download) {
     const link = document.createElement("a");
     link.href = URL.createObjectURL(await job.png());
     link.download = job.name;
     link.click();
-    // 下载由浏览器异步开始，稍后再释放地址。
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   }
   job.dispose();
+  photo = null;
   drawn = "";
+  element("photo").setAttribute("aria-pressed", "false");
+  element("photo").title = element("photo").ariaLabel = "拍照";
+  element("photo-progress").hidden = true;
 }
-element("open-world").onclick = picker;
-element("open-empty").onclick = picker;
-for (const name of ["settings", "info"])
-  element(name + "-open").onclick = () => element(name).showModal();
-element("jump-open").onclick = () => {
-  ["x", "y", "z"].forEach(
-    (axis, i) =>
-      (element("jump-" + axis).value = camera.position[i].toFixed(2)),
-  );
-  element("jump").showModal();
-};
-element("jump-close").onclick = () => element("jump").close();
-element("jump-form").onsubmit = (event) => {
-  event.preventDefault();
-  camera.position = ["x", "y", "z"].map((axis) =>
-    Number(element("jump-" + axis).value),
-  );
-  element("jump").close();
-  renderer?.resetTiming();
-};
-element("close-world").onclick = async () => {
-  const response = await fetch("/api/world/close", { method: "POST" });
-  await useWorld(await response.json());
-};
+
+/** 同一帧循环消费当前视图的相机；世界、光照和累积仍使用同一条绘制路径。
+ * @param {number} now
+ */
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  if (!world.loaded || !stream) return;
   if (photo) {
-    if (photo.step()) finishPhoto();
-    else element("photo").textContent = `取消拍照 ${Math.floor(photo.progress * 100)}%`;
+    if (photo.finishing) return;
+    if (photo.step()) finishPhoto(true);
+    else
+      element("photo-progress").textContent =
+        `${Math.floor(photo.progress * 100)}% · 再按取消`;
     return;
   }
+  const view = map.frame(settings);
+  controls.enabled = view.objects;
   controls.update(dt, Number(settings.speed));
-  // 时间流动时一天约 4 分钟。滑块跟着走，但不必每帧写入本地存储。
-  if (settings.timeFlow) {
+  if (settings.shadows && settings.timeFlow) {
     settings.time = (settings.time + (dt * 24) / 240) % 24;
-    element("time").value = String(settings.time);
-    showTime();
+    hud.settings();
   }
-  stream.update(camera.position, settings);
-  stream.publish();
+  stream?.update(view.center, { ...settings, nearPosition: camera.position });
+  stream?.publish();
+  map.refresh(stream);
   const scale = renderScale(),
     width = Math.round(innerWidth * scale),
-    height = Math.round(innerHeight * scale),
-    sun = sunDirection(settings.time),
-    state = JSON.stringify([
-      camera.position,
-      camera.yaw,
-      camera.pitch,
-      width,
-      height,
-      settings.shadows,
-      settings.fog,
-      sun,
-      renderer.version,
-    ]);
-  // 画面变化时出一帧预览；静止后逐帧累积样本，到上限后停笔，GPU 回到空闲。
+    height = Math.round(innerHeight * scale);
+  const sun = sunDirection(settings.time),
+    objects = view.objects;
+  const state = JSON.stringify([
+    view,
+    width,
+    height,
+    settings.shadows,
+    settings.fog,
+    sun,
+    renderer.version,
+    objects,
+  ]);
   const changed =
     continuous ||
     state !== drawn ||
-    renderer.animating(camera, { width, height });
-  if (changed || renderer.accumulated < settings.stillSamples) {
-    renderer.draw(camera, {
+    (objects && renderer.animating(view.camera, { width, height }));
+  let rendered = false;
+  if (
+    !view.overview &&
+    (changed || renderer.accumulated < settings.stillSamples)
+  ) {
+    renderer.draw(view.camera, {
       width,
       height,
       accumulate: !changed,
       time: now / 1000,
       shadows: settings.shadows,
       sun,
-      fog: fogDistance(),
+      fog: view.fog,
+      objects,
     });
+    rendered = true;
   }
   if (changed) {
-    // 帧率只统计画面变化时连续绘制之间的间隔，静止后的第一帧不计入。
     if (now - drawnAt < 250) frames.push(now - drawnAt);
     if (frames.length > 240) frames.shift();
     drawn = state;
     drawnAt = now;
   }
-  if (now - statusAt > 300) {
-    const stats = stream.stats,
-      times = renderer.times.sort((a, b) => a - b),
-      median = times[Math.floor(times.length / 2)],
-      interval = frames.reduce((a, b) => a + b, 0) / frames.length;
-    element("loading").textContent =
-      stats.pending || stats.nearPending
-        ? `近景对象准备 ${stats.nearPending} 区域 · 远景覆盖 ${stats.loaded}/${stats.wanted}`
-        : "已加载";
-    element("position").textContent = camera.position
-      .map((v) => v.toFixed(1))
-      .join(" / ");
-    element("fps").textContent =
-      now - drawnAt > 300 || !frames.length
-        ? renderer.accumulated < settings.stillSamples
-          ? `静止累积 ${renderer.accumulated}/${settings.stillSamples} · ${width}×${height}`
-          : `静止 · ${width}×${height}`
-        : `${Math.round(1000 / interval)} FPS · ${width}×${height}`;
-    element("details").textContent =
-      `${world.name}\n${world.path}\n\n近景半径：${settings.nearRadius} 区块\n远景半径：${settings.farRadius} 区块，覆盖 ${settings.farRadius * 32}×${settings.farRadius * 32}×512 方块\n静态模型 section：${stats.sections}\n已发布区域：${stats.loaded}/${stats.wanted}\n待更新区域：${stats.pending} · 失败：${stats.failed}\n特殊对象：${stats.objects}\n累计传输：${(stats.bytes / 1024 ** 2).toFixed(1)} MiB\n区域显存已用：${(stats.usedBytes / 1024 ** 2).toFixed(1)} MiB\nGPU 纹理分配：${(renderer.textureBytes / 1024 ** 2).toFixed(1)} MiB\nGPU 中位数：${median?.toFixed(2) || "…"} ms\n实际像素：${width}×${height}\n\n仅支持 Java 主世界。含水附加层与更多 NBT 外观尚未接入。`;
+  if (now - statusAt > 100) {
+    hud.position(camera.position);
+    drawAxes(element("axes"), camera);
+    element("resolution-value").textContent = `${width}×${height}`;
+    const interval = frames.reduce((a, b) => a + b, 0) / frames.length;
+    element("fps").textContent = !changed
+      ? rendered
+        ? `累积 ${renderer.accumulated}/${settings.stillSamples}`
+        : "静止"
+      : `${Math.round(1000 / interval) || "—"} FPS`;
+    if (stream) {
+      const stats = stream.stats,
+        times = renderer.times.sort((a, b) => a - b),
+        median = times[Math.floor(times.length / 2)];
+      hud.loading(stats);
+      hud.details([
+        ["近景半径", `${settings.nearRadius} 区块`],
+        ["远景半径", `${settings.farRadius} 区块`],
+        [
+          "窗口覆盖",
+          `${settings.farRadius * 32}×${settings.farRadius * 32}×512`,
+        ],
+        ["静态 section", String(stats.sections)],
+        ["已发布区域", `${stats.loaded}/${stats.wanted}`],
+        ["待更新 / 失败", `${stats.pending} / ${stats.failed}`],
+        ["特殊对象", String(stats.objects)],
+        ["累计传输", `${(stats.bytes / 1024 ** 2).toFixed(1)} MiB`],
+        ["区域显存", `${(stats.usedBytes / 1024 ** 2).toFixed(1)} MiB`],
+        ["GPU 纹理", `${(renderer.textureBytes / 1024 ** 2).toFixed(1)} MiB`],
+        ["GPU 中位数", `${median?.toFixed(2) || "…"} ms`],
+        ["实际像素", `${width}×${height}`],
+      ]);
+    }
     statusAt = now;
   }
 }
+
+if (settings.texturePath || settings.textureSize !== 128)
+  await applyTextures(settings.texturePath).catch((error) =>
+    hud.error(String(error)),
+  );
+await useWorld(await (await fetch("/api/world")).json());
 window.addEventListener("pagehide", () => {
   stream?.dispose();
-  renderer?.dispose();
+  renderer.dispose();
 });
-// 验收入口只读状态并允许固定相机，使用同一流式调度与绘制路径。
+// 验收入口仍使用实际会话、流式调度和绘制路径，不替换成测试场景。
 globalThis.viewerR2 = {
   get state() {
     return {
       world,
       settings: { ...settings },
       camera: { ...camera, position: [...camera.position] },
+      map: {
+        open: map.open,
+        camera: map.camera,
+        center: [...map.center],
+        overview: map.isOverview,
+        selection: map.selection,
+        pending: !!map.pending,
+        tiles: map.tiles.length,
+      },
       stream: stream?.stats,
-      gpuTimes: renderer?.times || [],
+      gpuTimes: renderer.times,
       frames: [...frames],
-      error: renderer?.gl.getError() || 0,
+      error: renderer.gl.getError(),
     };
   },
+  /** 固定相机朝向，供像素回归与截图使用。 @param {number[]} position @param {number[]} target */
   setCamera(position, target) {
     camera.position = [...position];
     const d = target.map((v, i) => v - position[i]);
     camera.yaw = Math.atan2(d[0], -d[2]);
     camera.pitch = Math.asin(d[1] / Math.hypot(...d));
-    renderer?.resetTiming();
+    renderer.resetTiming();
   },
-  /** 打开后每帧都绘制，供性能实验连续采样。 */
   set continuous(value) {
     continuous = value;
   },
@@ -382,6 +383,8 @@ globalThis.viewerR2 = {
   get stream() {
     return stream;
   },
+  get map() {
+    return map;
+  },
 };
 requestAnimationFrame(frame);
-await useWorld(await (await fetch("/api/world")).json());

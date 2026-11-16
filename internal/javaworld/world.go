@@ -70,6 +70,39 @@ func OpenWorld(path string, mapping map[string]uint32) (*World, error) {
 }
 func (w *World) Close() error { return w.source.Close() }
 
+// Chunks 只扫描主世界区域文件的占用表，供缩略地图定位存在的区块。
+// 每条记录为小端 int32 区域坐标和 128 字节位图，位序按 Z-X 排列、低位在前。
+func (w *World) Chunks(ctx context.Context) ([]byte, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	data := make([]byte, 0)
+	offsets := make(map[celler.ChunkPos]int)
+	err := w.source.Scan(java.Overworld, java.Terrain, func(pos celler.ChunkPos) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		region := celler.ChunkPos{X: pos.X >> 5, Z: pos.Z >> 5}
+		offset, exists := offsets[region]
+		if !exists {
+			offset = len(data)
+			offsets[region] = offset
+			data = append(data, make([]byte, 136)...)
+			binary.LittleEndian.PutUint32(data[offset:], uint32(region.X))
+			binary.LittleEndian.PutUint32(data[offset+4:], uint32(region.Z))
+		}
+		i := (pos.Z&31)*32 + (pos.X & 31)
+		data[offset+8+int(i>>3)] |= 1 << (i & 7)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
 // Region 返回 8×8 区块列的压缩索引，每个调色板条目只携带一个共享静态模型编号。
 // 坐标、位宽、调色板长度和压缩字长度均为小端 uint32；坐标按 int32 解释。
 func (w *World) Region(ctx context.Context, rx, rz int) ([]byte, error) {

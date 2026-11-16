@@ -1,11 +1,17 @@
-/** 文件选择器只使用服务端给出的完整路径，不在浏览器里拼接平台路径。 */
+// 存档与材质包共用服务端目录浏览器，路径始终由服务端返回。
+/** 文件选择器只使用服务端给出的完整路径，不在浏览器里拼接平台路径。
+ * @param {(path:string)=>Promise<void>} openWorld
+ */
 export function createPicker(openWorld) {
   const dialog = document.querySelector("#files"),
     input = document.querySelector("#directory"),
     list = document.querySelector("#file-list"),
     message = document.querySelector("#file-message");
-  let listing, kind = "world", onChoose = openWorld;
+  let listing,
+    kind = "world",
+    onChoose = openWorld;
   const paths = { world: "", pack: "" };
+  /** 浏览失败时在对话框内显示原因，允许用户修改路径重试。 @param {string} path */
   async function browse(path = "") {
     message.textContent = "正在读取目录…";
     input.disabled = true;
@@ -33,7 +39,11 @@ export function createPicker(openWorld) {
         name.textContent = entry.name;
         const kind = document.createElement("span");
         kind.className = "kind";
-        kind.textContent = entry.pack ? "材质包" : entry.world ? "Java 存档" : "目录";
+        kind.textContent = entry.pack
+          ? "材质包"
+          : entry.world
+            ? "Java 存档"
+            : "目录";
         row.append(name, kind);
         row.onclick = () =>
           entry.pack || entry.world ? choose(entry.path) : browse(entry.path);
@@ -48,6 +58,7 @@ export function createPicker(openWorld) {
       document.querySelector("#parent").disabled = !listing;
     }
   }
+  /** 保持对话框直到存档打开或贴图应用完成。 @param {string} path */
   async function choose(path) {
     message.textContent = kind === "pack" ? "正在合成材质包…" : "正在打开存档…";
     try {
@@ -70,9 +81,14 @@ export function createPicker(openWorld) {
   return ({ kind: nextKind = "world", choose: callback = openWorld } = {}) => {
     kind = nextKind;
     onChoose = callback;
-    dialog.querySelector("h2").textContent = kind === "pack" ? "选择 Java 材质包" : "打开 Java 存档";
-    document.querySelector("#open-directory").textContent = kind === "pack" ? "使用当前材质包目录" : "打开当前存档目录";
-    dialog.querySelector(".hint").textContent = kind === "pack" ? "选择 zip 文件或包含 assets 的材质包目录，也可直接输入完整路径。" : "请选择包含 level.dat 和 region 的 Java 主世界目录。存档以只读方式打开。";
+    dialog.querySelector("h2").textContent =
+      kind === "pack" ? "选择 Java 材质包" : "打开 Java 存档";
+    document.querySelector("#open-directory").textContent =
+      kind === "pack" ? "使用当前材质包目录" : "打开当前存档目录";
+    dialog.querySelector(".hint").textContent =
+      kind === "pack"
+        ? "选择 zip 文件或包含 assets 的材质包目录，也可直接输入完整路径。"
+        : "请选择包含 level.dat 和 region 的 Java 主世界目录。存档以只读方式打开。";
     dialog.showModal();
     browse(paths[kind]);
   };

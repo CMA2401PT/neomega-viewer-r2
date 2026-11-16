@@ -1,4 +1,4 @@
-// 在真实 Chrome 中验证空白启动、近远景设置、移动复用、卸载、会话切换和活动对象。
+// 在真实 Chrome 中验证天空启动、近远景设置、移动复用、卸载、会话切换和活动对象。
 const { chromium } = require(
   process.env.PLAYWRIGHT_MODULE ||
     "/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules/playwright",
@@ -28,14 +28,21 @@ fs.mkdirSync(out, { recursive: true });
     page.on("request", (r) => requests.push(r.url()));
     page.on("pageerror", (e) => result.errors.push(String(e)));
     page.on("console", (m) => {
-      if (m.text().includes("GL_INVALID")) result.errors.push(m.text());
+      if (/GL_INVALID|WebGL:.*INVALID/.test(m.text()))
+        result.errors.push(m.text());
     });
+    await page.request.post(base + "/api/world/close");
     await page.goto(base);
     await page.waitForFunction(() => globalThis.viewerR2);
     // 应用静止时不重画；实验需要连续的 GPU 时间与帧间隔。
     await page.evaluate(() => (viewerR2.continuous = true));
-    assert.equal(await page.locator("#empty").isVisible(), true);
-    assert.equal(requests.filter((s) => s.includes("/r2/assets/")).length, 0);
+    assert.equal(await page.locator("#view").isVisible(), true);
+    assert.equal(await page.locator("#map-open").isDisabled(), true);
+    assert.equal(await page.evaluate(() => viewerR2.state.error), 0);
+    assert(
+      requests.some((s) => s.includes("/r2/assets/")),
+      "空场景应初始化共享资源",
+    );
     const settled = async () => {
       await page.evaluate(
         () =>
@@ -74,17 +81,35 @@ fs.mkdirSync(out, { recursive: true });
         element.dispatchEvent(new Event("change"));
       }, value);
     };
-    const pixels = () =>
-      page.evaluate(() => {
+    const pixels = (objects = true) =>
+      page.evaluate((objects) => {
+        const { camera, settings } = viewerR2.state;
+        const angle = ((settings.time - 6) / 24) * 2 * Math.PI;
+        // 水面也有动画，像素对照固定物理时间，仍使用实际世界与当前设置。
+        viewerR2.renderer.draw(camera, {
+          width: 1280,
+          height: 720,
+          time: 0,
+          objects,
+          shadows: settings.shadows,
+          sun: [Math.cos(angle), Math.sin(angle), 0.3],
+          fog: settings.fog ? settings.farRadius * 16 : Infinity,
+        });
         const p = viewerR2.renderer.pixels();
         let s = "";
         for (let i = 0; i < p.length; i += 8192)
           s += String.fromCharCode(...p.subarray(i, i + 8192));
         return btoa(s);
-      });
-    await page.click("#open-empty");
+      }, objects);
+    // 固定光照和单帧预览，像素对照才不受动态时间与随机累积影响。
+    await page.locator("#time-flow").click();
+    await page.locator("#still-samples").evaluate((el) => {
+      el.value = "0";
+      el.dispatchEvent(new Event("change"));
+    });
+    await page.click("#open-world");
     await page.waitForFunction(() =>
-      document.querySelector("#file-message").textContent.endsWith("个目录"),
+      document.querySelector("#file-message").textContent.endsWith("个项目"),
     );
     await page.fill("#directory", fixture);
     await page.click("#open-directory");
@@ -96,11 +121,14 @@ fs.mkdirSync(out, { recursive: true });
     await page.waitForTimeout(300);
     await page.screenshot({ path: out + "/objects.png" });
     const on = await pixels();
-    await page.evaluate(() => (viewerR2.renderer.objects.enabled = false));
-    await page.waitForTimeout(100);
-    const off = await pixels();
+    const off = await pixels(false);
     assert.notEqual(on, off, "已加载的效果没有参加射线绘制");
-    await page.evaluate(() => (viewerR2.renderer.objects.enabled = true));
+    assert.notEqual(
+      await page.evaluate(() => viewerR2.renderer.objects.enabled),
+      false,
+      "单帧对象选项改变了对象仓库状态",
+    );
+    assert.equal(await pixels(), on, "对象选项未在下一次绘制恢复默认值");
     await stage("java-effector");
     await change("far-radius", 16);
     await settled();
@@ -108,7 +136,9 @@ fs.mkdirSync(out, { recursive: true });
     await stage("far-radius-16");
     await page.click("#close-world");
     await page.waitForFunction(() => !viewerR2.state.world.loaded);
-    assert.equal(await page.locator("#empty").isVisible(), true);
+    assert.equal(await page.locator("#view").isVisible(), true);
+    assert.equal(await page.locator("#map-open").isDisabled(), true);
+    assert.equal(await page.evaluate(() => viewerR2.state.error), 0);
     await change("far-radius", 48);
     const start = Date.now();
     await page.evaluate((path) => viewerR2.openWorld(path), haven);

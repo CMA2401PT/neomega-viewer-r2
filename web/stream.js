@@ -63,14 +63,23 @@ export class WorldStream {
         if (entry?.visible) this.dirty(entry);
       }
   }
-  /** 只有跨区块或设置改变才调整近景；远景每跨一个 128 方块区域移动一次目录窗口。 */
-  update(position, { nearRadius, farRadius }) {
+  /** 远景跟随 position，近景对象跟随 nearPosition；两种视图共用同一套区域生命周期。
+   * @param {number[]} position
+   * @param {{nearRadius:number,farRadius:number,nearPosition?:number[]}} options
+   */
+  update(position, { nearRadius, farRadius, nearPosition = position }) {
     if (this.textureChange) return;
-    const center = position.map((v) => Math.floor(v / 16)),
-      signature = center.join("/") + `/${nearRadius}/${farRadius}`;
+    const center = nearPosition.map((v) => Math.floor(v / 16)),
+      farCenter = position.map((v) => Math.floor(v / 128 + 0.5)),
+      signature =
+        center.join("/") +
+        "/" +
+        farCenter.join("/") +
+        `/${nearRadius}/${farRadius}`;
     if (signature === this.signature) return;
     this.signature = signature;
     this.center = center;
+    this.farCenter = position.map((v) => v / 16);
     this.nearRadius = nearRadius;
     const side = farRadius * 32,
       origin = [
@@ -92,6 +101,21 @@ export class WorldStream {
             key = regionKey(x, z);
           if (!wanted.has(key)) wanted.set(key, { x, z, visible: false });
         }
+    // 地图移到远处时仍保留主相机附近的来源与对象，收起地图无需重新加载对象。
+    for (
+      let z = Math.floor((center[2] - nearRadius) / 8);
+      z <= Math.floor((center[2] + nearRadius) / 8);
+      z++
+    )
+      for (
+        let x = Math.floor((center[0] - nearRadius) / 8);
+        x <= Math.floor((center[0] + nearRadius) / 8);
+        x++
+      ) {
+        const key = regionKey(x, z);
+        if (this.near(x, z) && !wanted.has(key))
+          wanted.set(key, { x, z, visible: false });
+      }
     const dropped = [];
     for (const [key, entry] of this.entries)
       if (!wanted.has(key)) {
@@ -137,8 +161,8 @@ export class WorldStream {
   }
   priority(entry) {
     return Math.hypot(
-      entry.x * 8 + 4 - this.center[0],
-      entry.z * 8 + 4 - this.center[2],
+      entry.x * 8 + 4 - this.farCenter[0],
+      entry.z * 8 + 4 - this.farCenter[2],
     );
   }
   pump() {
@@ -293,7 +317,9 @@ export class WorldStream {
           entry.published = version;
         }
         change.resolve();
-      } catch (error) { change.reject(error); }
+      } catch (error) {
+        change.reject(error);
+      }
       return;
     }
     if (data.type === "prepared" && this.textureChange) {
@@ -356,7 +382,9 @@ export class WorldStream {
    */
   async setTextures(set) {
     const change = { set, versions: new Map() };
-    change.promise = new Promise((resolve, reject) => Object.assign(change, { resolve, reject }));
+    change.promise = new Promise((resolve, reject) =>
+      Object.assign(change, { resolve, reject }),
+    );
     this.textureChange = change;
     this.ready = [];
     for (const entry of this.entries.values()) this.dirty(entry);
@@ -365,9 +393,18 @@ export class WorldStream {
       change.versions.set(key, entry.version);
       return { x: entry.x, z: entry.z };
     });
-    this.worker.postMessage({ type: "textures", catalog: set.catalog, regions, objects: this.objects.references() });
-    try { await change.promise; }
-    finally { this.textureChange = null; this.pump(); }
+    this.worker.postMessage({
+      type: "textures",
+      catalog: set.catalog,
+      regions,
+      objects: this.objects.references(),
+    });
+    try {
+      await change.promise;
+    } finally {
+      this.textureChange = null;
+      this.pump();
+    }
   }
   get stats() {
     const all = [...this.entries.values()],

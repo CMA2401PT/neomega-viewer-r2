@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"celler"
 	"celler/java"
 	"celler/layer_storage"
@@ -8,6 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -18,6 +21,7 @@ import (
 	"neomega-r2/blockactor"
 	"neomega-r2/effector"
 	"neomega-r2/object"
+	"neomega-viewer-r2/internal/javaworld"
 )
 
 // 测试处理器证明 NBT 会到达扩展入口，而远景请求完全不调用它。
@@ -66,7 +70,11 @@ func TestSessionAndNearObjectBoundary(t *testing.T) {
 	actor := &testActor{}
 	actors := blockactor.Registry{}
 	actors.Register(actor)
-	service := New(catalog, effector.Registry{"minecraft:enchanting_table": effector.Kind("enchanting_book")}, actors)
+	service := New(
+		javaworld.StateMapping(catalog),
+		effector.Registry{"minecraft:enchanting_table": effector.Kind("enchanting_book")},
+		actors,
+	)
 	defer service.Close()
 	handler := service.Handler(fstest.MapFS{"index.html": {Data: []byte("空白欢迎页")}})
 	request := func(method, url, body string) *httptest.ResponseRecorder {
@@ -149,5 +157,107 @@ func TestSessionAndNearObjectBoundary(t *testing.T) {
 	}
 	if reopened.ID <= info.ID || request("GET", regionURL, "").Code != 409 {
 		t.Fatal("重新打开后未拒绝旧会话")
+	}
+}
+
+// 稀疏存档覆盖正负区域坐标与位图边界，空区域和下界记录不应混入主世界占用表。
+func TestWorldChunks(t *testing.T) {
+	path := t.TempDir()
+	source, err := java.OpenDirectory(path, java.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	positions := []celler.ChunkPos{
+		{X: 0, Z: 0}, {X: 7, Z: 0}, {X: 8, Z: 0}, {X: 31, Z: 31},
+		{X: -1, Z: -1}, {X: -32, Z: -32}, {X: -33, Z: 32}, {X: 32, Z: -1},
+	}
+	for _, pos := range positions {
+		if err = source.WriteChunk(java.Overworld, java.NewChunk(pos, 4189)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	empty := celler.ChunkPos{X: 64, Z: 64}
+	if err = source.WriteChunk(java.Overworld, java.NewChunk(empty, 4189)); err != nil {
+		t.Fatal(err)
+	}
+	if err = source.Delete(java.Overworld, java.Terrain, empty); err != nil {
+		t.Fatal(err)
+	}
+	if err = source.WriteChunk(java.Nether, java.NewChunk(empty, 4189)); err != nil {
+		t.Fatal(err)
+	}
+	if err = source.WriteLevel(nbt.Document{Value: nbt.Compound{"Data": nbt.Compound{}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err = source.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err = source.Close(); err != nil {
+		t.Fatal(err)
+	}
+	service := New(nil, nil, nil)
+	defer service.Close()
+	info, err := service.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := service.Handler(fstest.MapFS{})
+	request := func(id uint64) *httptest.ResponseRecorder {
+		t.Helper()
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest("GET", fmt.Sprintf("/api/world/chunks?world=%d", id), nil))
+		return response
+	}
+	first := request(info.ID)
+	if first.Code != 200 || first.Header().Get("Content-Type") != "application/octet-stream" {
+		t.Fatal(first.Code, first.Header(), first.Body.String())
+	}
+	data := first.Body.Bytes()
+	if len(data) != 4*136 {
+		t.Fatalf("期望 4 条非空区域记录，得到 %d 字节", len(data))
+	}
+	want := map[celler.ChunkPos][128]byte{
+		{X: 0, Z: 0}:   {0: 0x81, 1: 0x01, 127: 0x80},
+		{X: -1, Z: -1}: {0: 0x01, 127: 0x80},
+		{X: -2, Z: 1}:  {3: 0x80},
+		{X: 1, Z: -1}:  {124: 0x01},
+	}
+	for offset := 0; offset < len(data); offset += 136 {
+		pos := celler.ChunkPos{
+			X: int32(binary.LittleEndian.Uint32(data[offset:])),
+			Z: int32(binary.LittleEndian.Uint32(data[offset+4:])),
+		}
+		bitmap, ok := want[pos]
+		if !ok || !bytes.Equal(data[offset+8:offset+136], bitmap[:]) {
+			t.Fatalf("区域 %v 的位图错误：%x", pos, data[offset+8:offset+136])
+		}
+		delete(want, pos)
+	}
+	// 删除文件后仍应命中会话缓存；重新打开则扫描为空，并拒绝旧会话。
+	files, err := filepath.Glob(filepath.Join(path, "region", "*.mca"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if err = os.Remove(file); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if cached := request(info.ID); cached.Code != 200 || !bytes.Equal(cached.Body.Bytes(), data) {
+		t.Fatal("占用表未命中会话缓存")
+	}
+	reopened, err := service.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request(info.ID).Code != 409 {
+		t.Fatal("切换后仍接受旧会话的占用表请求")
+	}
+	if empty := request(reopened.ID); empty.Code != 200 || empty.Body.Len() != 0 {
+		t.Fatal("空存档的占用表应为零字节")
+	}
+	service.Close()
+	if request(reopened.ID).Code != 409 {
+		t.Fatal("关闭后仍接受占用表请求")
 	}
 }

@@ -36,6 +36,7 @@ type session struct {
 	cache  map[string]*list.Element
 	order  *list.List
 	bytes  int
+	chunks []byte
 }
 type Server struct {
 	mu       sync.RWMutex
@@ -48,8 +49,9 @@ type Server struct {
 	Actors   blockactor.Registry
 }
 
-func New(catalog *r2.Catalog, effects effector.Registry, actors blockactor.Registry) *Server {
-	return &Server{mapping: javaworld.StateMapping(catalog), workers: make(chan struct{}, 4), Effects: effects, Actors: actors}
+// New 接收启动时准备好的状态映射，使准备进度与 HTTP 会话管理各自独立。
+func New(mapping map[string]uint32, effects effector.Registry, actors blockactor.Registry) *Server {
+	return &Server{mapping: mapping, workers: make(chan struct{}, 4), Effects: effects, Actors: actors}
 }
 
 // Open 先准备新来源，成功后等待旧读取完成再交换，打开失败时保留当前世界。
@@ -158,6 +160,7 @@ func (s *Server) Handler(web fs.FS) http.Handler {
 		textures.WriteTo(w)
 	})
 	mux.HandleFunc("GET /api/world/region", s.region)
+	mux.HandleFunc("GET /api/world/chunks", s.chunks)
 	mux.HandleFunc("GET /api/world/objects", s.objects)
 	mux.Handle("/", http.FileServerFS(web))
 	return mux
@@ -197,6 +200,23 @@ func (s *Server) read(w http.ResponseWriter, r *http.Request, build func(*sessio
 		writeJSON(w, value)
 	}
 }
+
+// chunks 的会话缓存独立于区域 LRU，缩略地图在同一会话内只需扫描一次占用表。
+func (s *Server) chunks(w http.ResponseWriter, r *http.Request) {
+	s.read(w, r, func(current *session) (any, error) {
+		current.mu.Lock()
+		defer current.mu.Unlock()
+		if current.chunks == nil {
+			data, err := current.source.Chunks(r.Context())
+			if err != nil {
+				return nil, err
+			}
+			current.chunks = data
+		}
+		return current.chunks, nil
+	})
+}
+
 func (s *Server) region(w http.ResponseWriter, r *http.Request) {
 	x, err := queryInt(r, "x")
 	if err != nil {

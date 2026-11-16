@@ -8,58 +8,263 @@
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
+    <svg id="icons" aria-hidden="true">
+      <!-- 有内部区域的形状带 fill 类，用淡色填满轮廓；开放线条只描边。 -->
+      <symbol id="i-eye" viewBox="0 0 24 24">
+        <path
+          class="fill"
+          d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"
+        />
+        <circle class="fill" cx="12" cy="12" r="3" />
+      </symbol>
+      <symbol id="i-map" viewBox="0 0 24 24">
+        <path class="fill" d="M3.5 6.5 9 4.5l6 2 5.5-2v13l-5.5 2-6-2-5.5 2Z" />
+        <path d="M9 4.5v13M15 6.5v13" />
+      </symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24">
+        <path d="M5 12h14M13 6l6 6-6 6" />
+      </symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24">
+        <path
+          class="fill"
+          d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4.2l2 2.2H19A1.5 1.5 0 0 1 20.5 9.2v8.3A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5Z"
+        />
+        <path d="M3.5 10h17" />
+      </symbol>
+      <symbol id="i-info" viewBox="0 0 24 24">
+        <circle class="fill" cx="12" cy="12" r="8.5" />
+        <path d="M12 11v5.5M12 7.8v.1" />
+      </symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24">
+        <path
+          class="fill"
+          d="M9.63 5.09L10.09 2.59A9.6 9.6 0 0 1 13.91 2.59L14.37 5.09A7.3 7.3 0 0 1 15.21 5.44L17.30 4.00A9.6 9.6 0 0 1 20.00 6.70L18.56 8.79A7.3 7.3 0 0 1 18.91 9.63L21.41 10.09A9.6 9.6 0 0 1 21.41 13.91L18.91 14.37A7.3 7.3 0 0 1 18.56 15.21L20.00 17.30A9.6 9.6 0 0 1 17.30 20.00L15.21 18.56A7.3 7.3 0 0 1 14.37 18.91L13.91 21.41A9.6 9.6 0 0 1 10.09 21.41L9.63 18.91A7.3 7.3 0 0 1 8.79 18.56L6.70 20.00A9.6 9.6 0 0 1 4.00 17.30L5.44 15.21A7.3 7.3 0 0 1 5.09 14.37L2.59 13.91A9.6 9.6 0 0 1 2.59 10.09L5.09 9.63A7.3 7.3 0 0 1 5.44 8.79L4.00 6.70A9.6 9.6 0 0 1 6.70 4.00L8.79 5.44A7.3 7.3 0 0 1 9.63 5.09Z"
+        />
+        <circle class="fill" cx="12" cy="12" r="3" />
+      </symbol>
+      <symbol id="i-up" viewBox="0 0 24 24">
+        <path class="fill" d="M12 7.5 18 15H6Z" />
+      </symbol>
+      <symbol id="i-rise" viewBox="0 0 24 24">
+        <path d="M6 4.5h12M12 19v-6" />
+        <path class="fill" d="M12 8 16.5 13h-9Z" />
+      </symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M6 12h12" /></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24">
+        <path d="M6 12h12M12 6v12" />
+      </symbol>
+      <symbol id="i-parent" viewBox="0 0 24 24">
+        <path d="M12 19V6M6.5 11.5 12 6l5.5 5.5" />
+      </symbol>
+      <symbol id="i-camera" viewBox="0 0 24 24">
+        <path class="fill" d="M3 7.5h5l1.5-3h5l1.5 3h5v12H3Z" />
+        <circle cx="12" cy="13" r="4" />
+      </symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24">
+        <circle class="fill" cx="12" cy="12" r="4" />
+        <path
+          d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"
+        />
+      </symbol>
+      <symbol id="i-flow" viewBox="0 0 24 24">
+        <circle class="fill" cx="12" cy="12" r="8.5" />
+        <path d="M12 6.5V12l4 2M19 3v5h-5" />
+      </symbol>
+      <symbol id="i-close-world" viewBox="0 0 24 24">
+        <path class="fill" d="M4 4h12v16H4Z" />
+        <path d="M10 12h11m-3-3 3 3-3 3" />
+      </symbol>
+      <symbol id="i-close" viewBox="0 0 24 24">
+        <path d="m6 6 12 12M6 18 18 6" />
+      </symbol>
+    </svg>
+
     <canvas id="view" tabindex="0" aria-label="三维存档视图"></canvas>
-    <div id="empty">
-      <h1>neOmega Viewer R2</h1>
-      <p>打开 Java 存档开始浏览</p>
-      <button id="open-empty" class="primary">打开存档</button>
+    <canvas id="map-overlay" tabindex="0" aria-label="全屏地图" hidden></canvas>
+    <div id="readouts" class="chrome halo">
+      <canvas id="axes" aria-hidden="true"></canvas
+      ><output id="resolution-value"></output><output id="fps">FPS —</output>
     </div>
-    <header>
-      <span class="brand">neOmega <b>R2</b></span
-      ><span id="world-name">未打开存档</span><span id="loading"></span>
-    </header>
-    <footer>
-      <button id="open-world">打开存档</button
-      ><button id="settings-open">设置</button
-      ><button id="photo">拍照</button
-      ><button id="jump-open">坐标</button
-      ><button id="info-open">场景信息</button
-      ><button id="close-world">关闭存档</button><span id="position"></span
-      ><span id="fps"></span>
-    </footer>
-    <div id="notice" role="status" hidden></div>
-    <dialog id="settings">
-      <form method="dialog">
-        <h2>显示设置</h2>
-        <button class="close" aria-label="关闭">×</button>
-      </form>
-      <label
-        >近景视距 <output id="near-value"></output
+    <output id="loading" class="halo" role="status"></output>
+    <aside id="toolbar" class="panel">
+      <div class="brand">neOmega <b>R2</b></div>
+      <div class="tools">
+        <button
+          id="eye"
+          class="icon-button"
+          title="隐藏 HUD"
+          aria-label="隐藏 HUD"
+        >
+          <svg><use href="#i-eye" /></svg></button
+        ><button id="photo" class="icon-button" title="拍照" aria-label="拍照">
+          <svg><use href="#i-camera" /></svg></button
+        ><button
+          id="shadows"
+          class="icon-button"
+          title="阴影"
+          aria-label="阴影"
+          aria-pressed="true"
+        >
+          <svg><use href="#i-sun" /></svg>
+        </button>
+      </div>
+      <div id="time-row">
+        <button
+          id="time-flow"
+          class="icon-button"
+          title="动态时间"
+          aria-label="动态时间"
+          aria-pressed="true"
+        >
+          <svg><use href="#i-flow" /></svg></button
         ><input
+          id="time"
+          type="range"
+          min="0"
+          max="24"
+          step="0.05"
+          aria-label="时刻"
+        />
+      </div>
+      <output id="photo-progress" hidden></output>
+    </aside>
+    <aside id="map-help" class="panel" hidden>
+      <p data-input="mouse">
+        左键平移 · 右键旋转 / 俯仰 · 滚轮围绕光标缩放 · 单击选点 · Esc 关闭
+      </p>
+      <p data-input="touch">单指平移 · 双指旋转和缩放 · 轻点选点</p>
+    </aside>
+    <div id="movepad" class="chrome" aria-label="触屏移动">
+      <div class="pad-rise">
+        <button type="button" data-move="up" aria-label="沿 Y 上升">
+          <svg><use href="#i-rise" /></svg>
+        </button>
+        <button type="button" data-move="down" aria-label="沿 Y 下降">
+          <svg class="flip"><use href="#i-rise" /></svg>
+        </button>
+      </div>
+      <div class="pad-cross">
+        <button type="button" data-move="forward" aria-label="向前">
+          <svg><use href="#i-up" /></svg>
+        </button>
+        <button type="button" data-move="left" aria-label="向左">
+          <svg class="turn-left"><use href="#i-up" /></svg>
+        </button>
+        <button type="button" data-move="right" aria-label="向右">
+          <svg class="turn-right"><use href="#i-up" /></svg>
+        </button>
+        <button type="button" data-move="back" aria-label="向后">
+          <svg class="flip"><use href="#i-up" /></svg>
+        </button>
+      </div>
+    </div>
+    <footer id="hud" class="dock panel chrome">
+      <button
+        id="map-open"
+        class="icon-button"
+        title="全屏地图"
+        aria-label="全屏地图"
+        disabled
+      >
+        <svg><use href="#i-map" /></svg></button
+      ><i class="divider"></i>
+      <form id="teleport" title="点击坐标可编辑">
+        <label
+          >X<input
+            id="x"
+            aria-label="X 坐标"
+            autocomplete="off"
+            spellcheck="false"
+            disabled /></label
+        ><label
+          >Y<input
+            id="y"
+            aria-label="Y 坐标"
+            autocomplete="off"
+            spellcheck="false"
+            disabled /></label
+        ><label
+          >Z<input
+            id="z"
+            aria-label="Z 坐标"
+            autocomplete="off"
+            spellcheck="false"
+            disabled /></label
+        ><button
+          id="teleport-go"
+          class="icon-button"
+          title="跳转到坐标"
+          aria-label="跳转到坐标"
+          type="submit"
+          disabled
+        >
+          <svg><use href="#i-arrow" /></svg>
+        </button>
+      </form>
+      <i class="divider"></i
+      ><button id="world-name" popovertarget="info" title="场景信息">
+        未打开存档</button
+      ><button
+        id="open-world"
+        class="icon-button"
+        title="打开存档"
+        aria-label="打开存档"
+      >
+        <svg><use href="#i-folder" /></svg></button
+      ><button
+        id="close-world"
+        class="icon-button"
+        title="关闭存档"
+        aria-label="关闭存档"
+        disabled
+      >
+        <svg><use href="#i-close-world" /></svg></button
+      ><i class="divider"></i
+      ><button
+        id="settings-open"
+        class="icon-button"
+        title="设置"
+        aria-label="设置"
+        popovertarget="settings"
+      >
+        <svg><use href="#i-settings" /></svg>
+      </button>
+    </footer>
+    <footer id="map-hud" class="dock panel" hidden>
+      <output id="map-selection">单击方块选点</output><i class="divider"></i
+      ><label class="zoom"
+        ><svg><use href="#i-minus" /></svg
+        ><input
+          id="map-zoom"
+          type="range"
+          min="3"
+          max="16"
+          step="0.01"
+          aria-label="地图跨度" /><svg><use href="#i-plus" /></svg></label
+      ><i class="divider"></i><button id="map-jump" disabled>跳转</button
+      ><button id="map-close">关闭</button>
+    </footer>
+    <div id="notice" class="panel" role="status" hidden></div>
+    <section id="settings" class="popover panel" popover>
+      <h2>显示设置</h2>
+      <label class="setting"
+        >近景视距<input
           id="near-radius"
           type="range"
           min="1"
           max="16"
-          step="1"
-          value="8"
-      /></label>
-      <p class="hint">
-        范围内启用已支持的特效与方块实体外观；静态模型不受此设置影响。
-      </p>
-      <label
-        >远景视距 <output id="far-value"></output
-        ><input
+          step="1" /><output id="near-value"></output
+      ></label>
+      <label class="setting"
+        >远景视距<input
           id="far-radius"
           type="range"
           min="16"
           max="96"
-          step="8"
-          value="48"
-      /></label>
-      <p class="hint">
-        控制全部静态模型的可见范围；栏杆、楼梯、花等在范围内保持完整形状。
-      </p>
-      <label
+          step="8" /><output id="far-value"></output
+      ></label>
+      <p class="hint">近景启用特殊对象，远景覆盖完整静态模型。</p>
+      <label class="setting"
         >渲染分辨率<select id="resolution">
           <option value="native">屏幕原生</option>
           <option value="2">窗口尺寸 2×</option>
@@ -69,22 +274,7 @@
           <option value="0.5">窗口尺寸 0.5×</option>
         </select></label
       >
-      <p class="hint">
-        画面清晰度主要取决于实际像素数。屏幕原生按系统缩放比例渲染；高于 1× 时先按更多像素渲染再缩小显示，边缘更细腻，开销随像素数增长。
-      </p>
-      <label>Java 材质包<input id="texture-path" placeholder="原版（可输入 zip 或文件夹路径）" /></label>
-      <div class="row"><button id="texture-browse">选择材质包</button><button id="texture-apply">应用</button><button id="texture-reset">恢复原版</button></div>
-      <label>贴图尺寸上限<select id="texture-size">
-        <option value="16">16</option><option value="32">32</option><option value="64">64</option>
-        <option value="128" selected>128</option><option value="256">256</option><option value="512">512</option>
-      </select></label>
-      <p id="texture-status" class="hint">缺失贴图使用原版。支持 labPBR 法线与高光贴图，切换保留当前存档和视角。</p>
-      <label>阴影<input id="shadows" type="checkbox" checked /></label>
-      <label>时间 <span id="time-value"></span><input id="time" type="range" min="0" max="24" step="0.05" /></label>
-      <label>时间流动<input id="time-flow" type="checkbox" /></label>
-      <label>远景雾<input id="fog" type="checkbox" /></label>
-      <p class="hint">阴影为每个像素向光源追踪一条射线。时间流动时一天约 4 分钟，画面每帧重绘，静止累积不会开始。远景雾只在远景视距边缘变浓，遮住地形的截断处。</p>
-      <label
+      <label class="setting"
         >静止时累积<select id="still-samples">
           <option value="0">关闭</option>
           <option value="16">16 帧</option>
@@ -92,14 +282,17 @@
           <option value="256">256 帧</option>
         </select></label
       >
-      <p class="hint">镜头停下后逐帧叠加样本：边缘抗锯齿、阴影边缘变柔和、墙角与屋檐下出现间接光的明暗。到达帧数后停止绘制。</p>
-      <label
+      <label class="setting"
+        >远景雾<input id="fog" class="switch" type="checkbox"
+      /></label>
+      <p class="hint">累积改善软影与边缘；远景雾淡化窗口边界。</p>
+      <label class="setting"
         >照片尺寸<select id="photo-scale">
           <option value="1">与渲染画面相同</option>
           <option value="2">渲染画面 2×</option>
         </select></label
       >
-      <label
+      <label class="setting"
         >照片样本<select id="photo-samples">
           <option value="4">4 / 像素</option>
           <option value="8">8 / 像素</option>
@@ -110,23 +303,62 @@
           <option value="1024">1024 / 像素</option>
         </select></label
       >
-      <p class="hint">拍照时画面暂停，按当前视角离屏渲染，光线最多反弹 4 次，完成后下载 PNG。再按一次按钮取消。耗时随像素数与样本数成正比；样本少时阴影边缘和墙角会有颗粒。</p>
-      <label
+      <p class="hint">拍照完成后下载 PNG，再按相机按钮取消。</p>
+      <label class="setting"
         >移动速度<select id="speed">
           <option value="16">16 方块 / 秒</option>
-          <option value="32" selected>32 方块 / 秒</option>
+          <option value="32">32 方块 / 秒</option>
           <option value="64">64 方块 / 秒</option>
           <option value="128">128 方块 / 秒</option>
         </select></label
       >
       <p class="hint">
-        拖动转向，WASD 移动，空格 / E 上升，Q 下降，Shift 加速。
+        <span data-input="mouse"
+          >拖动转向 · WASD 水平移动 · 空格上升 / Shift 下降 · 滚轮前后</span
+        >
+        <span data-input="touch"
+          >单指拖动转向 · 按住十字键水平移动 · 左侧按钮升降</span
+        >
       </p>
-    </dialog>
-    <dialog id="files">
-      <form method="dialog">
+      <h3>Java 材质包</h3>
+      <input
+        id="texture-path"
+        aria-label="材质包路径"
+        placeholder="原版，或输入 zip / 目录路径"
+      />
+      <div class="row">
+        <button id="texture-browse">选择</button
+        ><button id="texture-apply">应用</button
+        ><button id="texture-reset">恢复原版</button>
+      </div>
+      <label class="setting"
+        >贴图尺寸上限<select id="texture-size">
+          <option value="16">16</option>
+          <option value="32">32</option>
+          <option value="64">64</option>
+          <option value="128">128</option>
+          <option value="256">256</option>
+          <option value="512">512</option>
+        </select></label
+      >
+      <p id="texture-status" class="hint">原版 · 支持 labPBR 法线与高光贴图</p>
+    </section>
+    <section id="info" class="popover panel" popover>
+      <h2 id="info-name">场景信息</h2>
+      <p id="info-path"></p>
+      <dl id="details"></dl>
+    </section>
+    <dialog id="files" class="panel">
+      <form method="dialog" class="picker-title">
         <h2>打开 Java 存档</h2>
-        <button class="close" aria-label="关闭">×</button>
+        <button
+          id="picker-cancel"
+          class="icon-button"
+          title="关闭文件选择器"
+          aria-label="关闭文件选择器"
+        >
+          <svg><use href="#i-close" /></svg>
+        </button>
       </form>
       <div class="row">
         <input
@@ -135,43 +367,23 @@
           aria-label="目录路径"
         /><button id="browse">浏览</button>
       </div>
-      <div class="row">
-        <button id="parent">上级目录</button>
+      <div class="row locations">
+        <button id="parent" title="上级目录">
+          <svg><use href="#i-parent" /></svg>
+        </button>
         <div id="roots"></div>
       </div>
       <div id="file-list"></div>
+      <p class="hint"></p>
       <div class="row bottom">
-        <span id="file-message"></span
-        ><button id="open-directory" class="primary">打开当前存档目录</button>
+        <output id="file-message"></output
+        ><button id="open-directory">打开当前存档目录</button>
       </div>
-      <p class="hint">
-        请选择包含 level.dat 和 region 的 Java 主世界目录。存档以只读方式打开。
-      </p>
     </dialog>
-    <dialog id="jump">
-      <form id="jump-form">
-        <h2>移动到坐标</h2>
-        <button type="button" class="close" id="jump-close" aria-label="关闭">
-          ×
-        </button>
-        <div class="coordinates">
-          <label>X<input id="jump-x" type="number" step="any" required /></label
-          ><label
-            >Y<input id="jump-y" type="number" step="any" required /></label
-          ><label
-            >Z<input id="jump-z" type="number" step="any" required
-          /></label>
-        </div>
-        <button class="primary">前往</button>
-      </form>
-    </dialog>
-    <dialog id="info">
-      <form method="dialog">
-        <h2>场景信息</h2>
-        <button class="close" aria-label="关闭">×</button>
-      </form>
-      <pre id="details"></pre>
-    </dialog>
+    <div id="landscape">
+      <strong>仅支持横屏</strong>
+      <p>请旋转设备或加宽窗口</p>
+    </div>
     <script type="module" src="/app.js"></script>
   </body>
 </html>
