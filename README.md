@@ -177,7 +177,7 @@ Windows amd64 一键编译打包（需要 Go 和包含 `go.work` 的完整工作
 apps\neomega-viewer-r2\build-windows.cmd
 ```
 
-也可双击 `build-windows.cmd`。找不到 Go 时传 `-GoCommand "C:\path\to\go.exe"`，可用 `-Version v1.0.0` 指定版本；默认记录 viewer 和渲染核心的 Git 版本。脚本固定使用 `CGO_ENABLED=0`、`GOAMD64=v1`、`-trimpath` 和 `-ldflags="-s -w"`，验证 EXE 版本、架构、符号和本机构建路径，再输出 `dist/neomega-viewer-r2-windows-amd64.exe`、同名 ZIP 和 `SHA256SUMS.txt`。ZIP 包含兼容启动脚本、EXE、许可证、使用说明和构建信息。两个 CMD 入口只对自身启动的 PowerShell 进程设置执行策略，不修改系统的长期策略。
+也可双击 `build-windows.cmd`。找不到 Go 时传 `-GoCommand "C:\path\to\go.exe"`，可用 `-Version v1.0.0` 指定版本；默认记录 viewer 和渲染核心的 Git 版本。脚本固定使用 `CGO_ENABLED=0`、`GOAMD64=v1`、`-trimpath` 和 `-ldflags="-s -w"`，验证 EXE 版本、架构、符号和本机构建路径，再输出 `dist/neomega-viewer-r2-windows-amd64.exe`、同名 ZIP 和 `SHA256SUMS.txt`。ZIP 包含兼容启动脚本、EXE、许可证、使用说明和构建信息。发布的 PowerShell 脚本统一使用 UTF-8 BOM 和 CRLF，并用 Windows PowerShell 5.1 解析验证，避免中文系统将 UTF-8 误读为 ANSI。两个 CMD 入口只对自身启动的 PowerShell 进程设置执行策略，不修改系统的长期策略。
 
 其他平台或手动执行的不含调试符号构建：
 

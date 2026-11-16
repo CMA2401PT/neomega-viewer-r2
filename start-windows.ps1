@@ -1,4 +1,4 @@
-# Windows D3D11 驱动编译大型射线程序可能极慢；独立浏览器配置使用 OpenGL。
+﻿# Windows D3D11 驱动编译大型射线程序可能极慢；独立浏览器配置使用 OpenGL。
 param([int]$Port = 2412)
 $ErrorActionPreference = 'Stop'
 $executable = Join-Path $PSScriptRoot 'dist/neomega-viewer-r2.exe'

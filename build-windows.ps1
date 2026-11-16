@@ -86,8 +86,31 @@ try {
     $bytes = $null
 
     foreach ($file in @('start-windows.cmd', 'start-windows.ps1', 'LICENSE')) {
-        Copy-Item -LiteralPath (Join-Path $appRoot $file) -Destination $bundle
+        $source = Join-Path $appRoot $file
+        if ($file.EndsWith('.ps1')) {
+            # Windows PowerShell 5.1 otherwise decodes BOM-less UTF-8 as ANSI.
+            $script = [IO.File]::ReadAllText($source, [Text.Encoding]::UTF8)
+            $script = $script -replace '\r?\n', "`r`n"
+            [IO.File]::WriteAllText((Join-Path $bundle $file), $script, [Text.UTF8Encoding]::new($true))
+        } else {
+            Copy-Item -LiteralPath $source -Destination $bundle
+        }
     }
+    # Parse the packaged bytes in the same host used by start-windows.cmd.
+    # Parsing in PowerShell 7 alone would miss Windows ANSI decoding failures.
+    $scriptCheck = Join-Path $staging 'check-scripts.ps1'
+    @'
+param([string]$Directory)
+$ErrorActionPreference = 'Stop'
+foreach ($file in Get-ChildItem -LiteralPath $Directory -Filter '*.ps1') {
+    $tokens = $null
+    $parseErrors = $null
+    $null = [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$parseErrors)
+    if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+}
+'@ | Set-Content -LiteralPath $scriptCheck -Encoding ASCII
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptCheck -Directory $bundle
+    if ($LASTEXITCODE -ne 0) { throw 'Packaged launcher failed Windows PowerShell parsing.' }
     @"
 neOmega Viewer R2 - Windows amd64
 Version: $Version
