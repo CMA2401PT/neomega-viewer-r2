@@ -171,7 +171,15 @@ R2_URL=http://127.0.0.1:2413 node apps/neomega-viewer-r2/experiment/mobius.cjs
 
 `mobius.cjs` 独立验证默认场景的流式加载、协议解码、海面绘制参数、地图、拍照和关闭恢复，并在 1280×720、1920×1080 下截图，默认输出到 `/tmp/r2mobius/`。工具路径、输出与结果解释见 [验收说明](experiment/README.md)。
 
-不含调试符号的发布构建：
+Windows amd64 一键编译打包（需要 Go 和包含 `go.work` 的完整工作区）：
+
+```bat
+apps\neomega-viewer-r2\build-windows.cmd
+```
+
+也可双击 `build-windows.cmd`。找不到 Go 时传 `-GoCommand "C:\path\to\go.exe"`，可用 `-Version v1.0.0` 指定版本；默认记录 viewer 和渲染核心的 Git 版本。脚本固定使用 `CGO_ENABLED=0`、`GOAMD64=v1`、`-trimpath` 和 `-ldflags="-s -w"`，验证 EXE 版本、架构、符号和本机构建路径，再输出 `dist/neomega-viewer-r2-windows-amd64.exe`、同名 ZIP 和 `SHA256SUMS.txt`。ZIP 包含兼容启动脚本、EXE、许可证、使用说明和构建信息。两个 CMD 入口只对自身启动的 PowerShell 进程设置执行策略，不修改系统的长期策略。
+
+其他平台或手动执行的不含调试符号构建：
 
 ```sh
 mkdir -p apps/neomega-viewer-r2/dist
