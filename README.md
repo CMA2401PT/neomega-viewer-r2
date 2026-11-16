@@ -1,5 +1,7 @@
 # neomega-viewer-r2：存档射线浏览器
 
+neOmega Viewer R2 前身是 neOmega Viewer (https://github.com/CMA2401PT/neomega-viewer)，但是采用了全射线渲染器 (neOmega R2, https://github.com/CMA2401PT/neomega-r2)，这使得其很适合大可视区块高性能渲染&光影支持。
+
 这个应用把 Java／Bedrock 存档读取、流式调度和 R2 统一射线核心组合成可运行的浏览器。整个可见范围使用完整静态模型，包括栏杆、楼梯、花和跨格模型。近景额外启用已注册的 effector、block actor；静态形状不随近景距离改变。Go 对静态区域只做调色板映射。
 
 启动后显示内置默认场景 **Möbius**：海晶灯组成的莫比乌斯环立在无限海面上，夜幕中的月亮和灯环倒影共同构成开场画面。服务端把灯环作为普通方块来源，浏览器沿用存档的区域流式加载与地图；海面由渲染器按解析平面绘制。
@@ -16,7 +18,11 @@ go run ./apps/neomega-viewer-r2/cmd/viewer -listen 127.0.0.1:2412
 
 启动终端先显示准备阶段，包括读取模型目录和建立方块状态映射，完成后显示 WebUI 地址并打开默认浏览器。`-browser=false` 只显示地址，适合远程运行或浏览器验收。`-version` 打印版本后退出。
 
-浏览器访问 <http://127.0.0.1:2412>。Java 世界按维度的 `region` 目录读取，Bedrock 世界按 `db` 目录读取。也可启动时直接打开：
+浏览器访问 <http://127.0.0.1:2412>。Java 世界按维度的 `region` 目录读取，Bedrock 世界按 `db` 目录读取。
+
+Windows 上若页面停在着色器初始化、场景空白，可运行 `start-windows.cmd`（需要先构建 `dist/neomega-viewer-r2.exe`）。它启动服务，并用独立 Chrome／Edge 配置启用 OpenGL；浏览器设置和存储与日常浏览器分开。可传 `-Port 2413` 更换端口。AMD 780M 的 Windows Direct3D 11 后端已复现大型射线程序编译过慢；OpenGL 路径已通过默认场景、地图、拍照的浏览器验收。这是后端兼容启动方式，Direct3D 编译瓶颈尚未解决。初始化期间网页显示状态，失败时保留错误信息。
+
+也可启动时直接打开：
 
 ```sh
 go run ./apps/neomega-viewer-r2/cmd/viewer \
@@ -114,23 +120,23 @@ curl -X POST http://127.0.0.1:2412/api/textures \
 
 来源、渲染与应用调度分为三个边界：
 
-| 位置 | 责任 |
-|---|---|
-| `neomega-converter-core/worldinput/` | 两个 viewer 共用的路径识别、结构准备、维度扫描、原生只读句柄与读取关闭屏障。 |
-| `internal/worldsource/` | 将原生来源接到 Java 区块；为 Bedrock 组合转换器和可选 fixer。 |
-| `internal/mobius/` | 海晶灯莫比乌斯环、开场取景与只读场景缓存。 |
-| `internal/worlddata/` | Java 区块的公共区域适配、近景对象、固定高度裁剪，以及内置场景共用的区域和地图编码。 |
-| `internal/linksource/` | 内存区块快照、转换修复、范围淘汰和预算提交。 |
-| `r2link/` | 数据源可复用的 TCP/WS 分帧、JSON 头和二进制索引编解码。 |
-| `internal/server/` | 来源会话、区域缓存、HTTP、SSE 页面登记与连接重试。切换场景后拒绝旧会话请求。 |
-| `internal/filebrowse/` | 服务端文件浏览、各类来源识别与材质包选择。 |
-| `web/stream.js` | 可见范围、下载取消、近远景更新、逐区发布与卸载。 |
-| `web/app.js` | 会话、材质包与照片组装，同一绘制和累积循环。 |
-| `web/hud.js`、`overlay.js` | 坐标编辑、弹出面板、时间控件、坐标轴和临时读数。 |
-| `web/map.js` | 全屏地图相机、鼠标与触屏手势、拾取重试和区块占用叠加。 |
-| `web/controls.js`、`movepad.js` | 主相机飞行输入与触屏持续移动按钮。 |
-| `web/picker.js` | 服务端存档和材质包目录选择。 |
-| `neomega-r2/web/` | 共享模型、纯数据场景准备、GPU 目录与统一求交。 |
+| 位置                                 | 责任                                                                                |
+| ------------------------------------ | ----------------------------------------------------------------------------------- |
+| `neomega-converter-core/worldinput/` | 两个 viewer 共用的路径识别、结构准备、维度扫描、原生只读句柄与读取关闭屏障。        |
+| `internal/worldsource/`              | 将原生来源接到 Java 区块；为 Bedrock 组合转换器和可选 fixer。                       |
+| `internal/mobius/`                   | 海晶灯莫比乌斯环、开场取景与只读场景缓存。                                          |
+| `internal/worlddata/`                | Java 区块的公共区域适配、近景对象、固定高度裁剪，以及内置场景共用的区域和地图编码。 |
+| `internal/linksource/`               | 内存区块快照、转换修复、范围淘汰和预算提交。                                        |
+| `r2link/`                            | 数据源可复用的 TCP/WS 分帧、JSON 头和二进制索引编解码。                             |
+| `internal/server/`                   | 来源会话、区域缓存、HTTP、SSE 页面登记与连接重试。切换场景后拒绝旧会话请求。        |
+| `internal/filebrowse/`               | 服务端文件浏览、各类来源识别与材质包选择。                                          |
+| `web/stream.js`                      | 可见范围、下载取消、近远景更新、逐区发布与卸载。                                    |
+| `web/app.js`                         | 会话、材质包与照片组装，同一绘制和累积循环。                                        |
+| `web/hud.js`、`overlay.js`           | 坐标编辑、弹出面板、时间控件、坐标轴和临时读数。                                    |
+| `web/map.js`                         | 全屏地图相机、鼠标与触屏手势、拾取重试和区块占用叠加。                              |
+| `web/controls.js`、`movepad.js`      | 主相机飞行输入与触屏持续移动按钮。                                                  |
+| `web/picker.js`                      | 服务端存档和材质包目录选择。                                                        |
+| `neomega-r2/web/`                    | 共享模型、纯数据场景准备、GPU 目录与统一求交。                                      |
 
 本应用通过 converter 组合 viewer-core 的 fixer。核心 neomega-r2 保持独立，只接收 Java 状态对应的静态模型编号。远景与近景使用同一份来源索引，但 NBT 外观与特效仅由近景对象接口处理。
 

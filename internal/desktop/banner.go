@@ -147,6 +147,11 @@ func PrintBanner(out io.Writer, version string, colored bool) {
 	gray("  MC-Assets   https://github.com/zardoy/mc-assets")
 	gray("本项目已在 amuletmc.com 购买 Amulet 授权（2026-11-07，订单号 KBPp706mBN）。")
 	gray("如果你还没有 Amulet 授权，也建议购买一份，支持 Amulet 的持续开发。")
+	gray("neOmega Viewer R2 前身是 neOmega Viewer (https://github.com/CMA2401PT/neomega-viewer), " +
+		"但是采用了全射线渲染器 (neOmega R2, https://github.com/CMA2401PT/neomega-r2)，" +
+		"这使得其很适合大可视区块高性能渲染&光影支持")
+	gray("neOmega Viewer R2 是开源项目：https://github.com/CMA2401PT/neomega-viewer-r2")
+
 	b.WriteString("\n")
 	io.WriteString(out, b.String())
 }

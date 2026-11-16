@@ -1,7 +1,9 @@
-// 独立验证默认场景，使用真实流式加载、核心解码和 Chrome Metal 截图。
+// 独立验证默认场景；Windows 默认验证本机后端，R2_ANGLE=gl 可验证兼容入口。
 const { chromium } = require(
   process.env.PLAYWRIGHT_MODULE ||
-    "/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules/playwright",
+    (process.platform === "darwin"
+      ? "/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules/playwright"
+      : "playwright"),
 );
 const fs = require("node:fs");
 const assert = require("node:assert/strict");
@@ -13,9 +15,14 @@ fs.mkdirSync(out, { recursive: true });
   const browser = await chromium.launch({
     executablePath:
       process.env.CHROME ||
-      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      (process.platform === "win32"
+        ? `${process.env.ProgramFiles}/Google/Chrome/Application/chrome.exe`
+        : "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
     headless: true,
-    args: ["--enable-webgl", "--ignore-gpu-blocklist", "--use-angle=metal"],
+    args: ["--enable-webgl", "--ignore-gpu-blocklist",
+      ...(process.env.R2_ANGLE ? [`--use-angle=${process.env.R2_ANGLE}`]
+        : process.platform === "darwin" ? ["--use-angle=metal"] : []),
+    ],
   });
   const result = { errors: [], shots: [], checks: [] };
   try {
