@@ -307,8 +307,7 @@ export class FullscreenMap {
     }
     const pixel = { width: innerWidth, height: innerHeight, x, y },
       camera = this.camera;
-    const key = `${Math.floor(point[0] / 128)}/${Math.floor(point[2] / 128)}`;
-    if (!this.stream.gpu.regions.has(key)) {
+    if (!this.session.published(Math.floor(point[0] / 128), Math.floor(point[2] / 128))) {
       this.select(null);
       this.center = point;
       this.pending = { camera, pixel };
@@ -363,12 +362,12 @@ export class FullscreenMap {
     };
   }
   /** 在宿主更新窗口并发布数据后重试选点，避免把旧窗口的空闲状态当作加载完成。
-   * @param {import("./stream.js").WorldStream|undefined} stream
+   * @param {import("/r2/index.js").WorldSession|null} session
    */
-  refresh(stream) {
+  refresh(session) {
     if (!this.open) return;
-    this.stream = stream;
-    if (this.pending && !stream.stats.pending) {
+    this.session = session;
+    if (this.pending && session && !session.stats.pending) {
       const { camera, pixel } = this.pending;
       this.pending = null;
       this.select(this.renderer.pick(camera, pixel));

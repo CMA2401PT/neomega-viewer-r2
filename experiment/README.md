@@ -1,6 +1,6 @@
 # R2 浏览器验收与性能对照
 
-静态方块在整个可见范围使用同一个共享模型编号。近景半径只控制 effector 和 block actor，不参与静态形状选择。这里用实际存档和 Chrome 验证绘制、来源、动态连接和界面，性能对照则单独固定相机与绘制参数。
+静态方块在整个可见范围使用同一个共享模型编号。近景半径只控制 effector 和 block actor，不参与静态形状选择。这里用实际存档和 Chrome 验证绘制、来源和界面，性能对照则单独固定相机与绘制参数。
 
 `static-models.cjs` 打开独立验证存档，在固定相机下比较近景半径 1 与 16 的画面。输入含栏杆、楼梯、花、跨区域告示牌以及附魔台。告示牌只检查预生成的静态形状，不依赖 NBT 文字处理器。
 
@@ -37,39 +37,6 @@ node apps/neomega-viewer-r2/experiment/sources.cjs
 ```
 
 未指定样本时使用工作区 `resource` 中的 Bedrock、天使翅膀 NBT 和全方块 mcstructure，以及 `~/Downloads/新天堂` Java 世界。各浏览器验收脚本顺序运行，因为它们共用服务端当前会话。
-
-## 动态连接验收
-
-`link-source` 提供可控的 TCP 和 WebSocket 数据源，`link.cjs` 从真实网络发送更新，再检查 Chrome 的画面与拾取。它覆盖两种传输与两种命名的四种组合，以及 patch、replace、section 删除、整块删除、双层 Bedrock、位置重置、场景重置、断线重连、按需范围补发与淘汰。
-
-在工作区根目录分别启动 R2 和实验数据源：
-
-```sh
-go run ./apps/neomega-viewer-r2/cmd/viewer -listen 127.0.0.1:2417 -browser=false
-go run ./apps/neomega-viewer-r2/experiment/link-source
-```
-
-然后运行：
-
-```sh
-R2_URL=http://127.0.0.1:2417 node apps/neomega-viewer-r2/experiment/link.cjs
-GOCACHE=/tmp/gocache go test -race \
-  ./apps/neomega-viewer-r2/internal/server \
-  ./apps/neomega-viewer-r2/internal/linksource \
-  ./apps/neomega-viewer-r2/r2link
-```
-
-结果和截图默认位于 `/tmp/r2link/link/`。实验数据源的 TCP 默认 2426，WebSocket 与控制接口默认 2428。`R2_LINK_FIXTURE`、`R2_LINK_TCP`、`R2_LINK_WS` 可以替换这些地址。所有浏览器脚本顺序运行，避免争用同一个服务会话。
-
-`link-examples.cjs` 通过 HUD 连接公开示例，检查画面中心可拾取，并保存场景与信息面板截图。先按[协议文档](../docs/r2link.md#运行最小示例)启动 Go 和 Python 数据源，再执行：
-
-```sh
-R2_JAVA_SOURCE=ws://127.0.0.1:2414/r2link \
-R2_PYTHON_SOURCE=tcp://127.0.0.1:2415 \
-node apps/neomega-viewer-r2/experiment/link-examples.cjs
-```
-
-Java 截图默认取景于“新天堂”的 `(1280,271,1280)`，朝向 `(1200,70,1200)`；换存档时需要调整脚本中的取景点。输出的 `examples.json` 记录连接地址、相机、来源统计与渲染状态。
 
 ## 同设置 GPU 对照
 

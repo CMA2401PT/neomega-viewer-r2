@@ -180,26 +180,6 @@ svg .shade {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* 状态跟随场景名，重连时用缓慢明暗变化保持可见而不抢占画面。 */
-#link-state {
-  width: 7px;
-  height: 7px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: #0b6b6b;
-}
-#link-state[data-state="connecting"],
-#link-state[data-state="reconnecting"] {
-  background: #b87914;
-  animation: link-pulse 2.4s ease-in-out infinite;
-}
-@keyframes link-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
-@media (prefers-reduced-motion: reduce) {
-  #link-state[data-state] { animation: none; }
-}
 .halo {
   color: #192b2e;
   text-shadow:
@@ -650,13 +630,11 @@ dialog::backdrop {
   justify-content: space-between;
   margin-bottom: 0;
 }
-#file-message,
-#link-message {
+#file-message {
   font-size: 12px;
   color: #697777;
 }
-#open-directory,
-#link-start {
+#open-directory {
   background: #dfedeb;
 }
 /* 地图只是换了一个俯视角度，右上角面板保留，方便切换渲染器、拍摄鸟瞰图；操作提示移到左上角。 */
@@ -726,6 +704,3 @@ body.map-open #movepad {
 }
 
 #source-options select { width: 180px; min-width: 0; }
-#link-dialog { width: min(520px, 90vw); }
-#link-url { flex: 1; min-width: 0; font: 12px var(--mono); }
-#link-memory { width: 120px; margin-left: auto; }

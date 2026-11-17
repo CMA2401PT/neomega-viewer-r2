@@ -1,6 +1,6 @@
 // java-source 监听 R2Link，把 Java 存档按客户端的关注范围发送出去。
 // 在工作区根目录运行：go run ./apps/neomega-viewer-r2/examples/java-source -world /path/to/world
-// R2 连接 tcp://127.0.0.1:2414；加 -transport ws 则连接 ws://127.0.0.1:2414/r2link。
+// R2 连接 ws://127.0.0.1:2414/r2link。
 package main
 
 import (
@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,10 +21,9 @@ import (
 	"neomega-viewer-r2/r2link"
 )
 
-// main 同一个示例可监听 TCP 或 WS，文件句柄随每个连接独立关闭。
+// main 在 /r2link 上接受 WebSocket，文件句柄随每个连接独立关闭。
 func main() {
 	address := flag.String("listen", "127.0.0.1:2414", "数据源监听地址")
-	transport := flag.String("transport", "tcp", "tcp 或 ws")
 	path := flag.String("world", "", "Java 世界目录或 .pack")
 	dimension := flag.String("dimension", "", "Java 维度目录")
 	resetEvery := flag.Duration("camera-every", 30*time.Second, "定时位置重置间隔，0 关闭")
@@ -50,39 +48,19 @@ func main() {
 			log.Print(err)
 		}
 	}
-	if *transport == "ws" {
-		mux := http.NewServeMux()
-		mux.HandleFunc("/r2link", func(w http.ResponseWriter, r *http.Request) {
-			conn, err := websocket.Accept(w, r, nil)
-			if err != nil {
-				return
-			}
-			serve(r2link.WebSocket(conn, 512<<20))
-		})
-		server := &http.Server{Addr: *address, Handler: mux}
-		context.AfterFunc(ctx, func() { server.Close() })
-		fmt.Printf("R2 数据源：ws://%s/r2link\n", *address)
-		if err := server.ListenAndServe(); err != nil && ctx.Err() == nil {
-			log.Fatal(err)
-		}
-	} else {
-		listener, err := net.Listen("tcp", *address)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/r2link", func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
 		if err != nil {
-			log.Fatal(err)
+			return
 		}
-		defer listener.Close()
-		context.AfterFunc(ctx, func() { listener.Close() })
-		fmt.Printf("R2 数据源：tcp://%s\n", listener.Addr())
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				if ctx.Err() != nil {
-					return
-				}
-				log.Fatal(err)
-			}
-			go serve(r2link.TCP(conn, 512<<20))
-		}
+		serve(r2link.WebSocket(conn, 512<<20))
+	})
+	server := &http.Server{Addr: *address, Handler: mux}
+	context.AfterFunc(ctx, func() { server.Close() })
+	fmt.Printf("R2 数据源：ws://%s/r2link\n", *address)
+	if err := server.ListenAndServe(); err != nil && ctx.Err() == nil {
+		log.Fatal(err)
 	}
 }
 

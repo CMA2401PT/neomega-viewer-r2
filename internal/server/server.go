@@ -15,10 +15,8 @@ import (
 	"neomega-r2/object"
 	"neomega-view-utils/r2assets"
 	"neomega-viewer-r2/internal/filebrowse"
-	"neomega-viewer-r2/internal/linksource"
 	"neomega-viewer-r2/internal/mobius"
 	"neomega-viewer-r2/internal/worldsource"
-	"neomega-viewer-r2/r2link"
 	"net/http"
 	"strconv"
 	"strings"
@@ -28,8 +26,6 @@ import (
 
 // Info 描述当前可加载的来源；Loaded 同时适用于存档与内置场景。
 type Info struct {
-	Connection *Connection       `json:"connection,omitempty"`
-	LinkStats  *linksource.Stats `json:"linkStats,omitempty"`
 	worldinput.Info
 	Scene              *mobius.Scene `json:"scene,omitempty"`
 	ID                 uint64        `json:"id"`
@@ -68,49 +64,36 @@ type cacheEntry struct {
 
 // session 隔离来源与缓存，切换后旧请求不能读取新场景。
 type session struct {
-	version uint64
-	info    Info
-	source  worldSource
-	mu      sync.Mutex
-	cache   map[string]*list.Element
-	order   *list.List
-	bytes   int
-	chunks  []byte
+	info   Info
+	source worldSource
+	mu     sync.Mutex
+	cache  map[string]*list.Element
+	order  *list.List
+	bytes  int
+	chunks []byte
 }
 
 // Server 串行切换来源，并限制区域读取的并发量。
 type Server struct {
-	ConnectMemoryMiB int
-	linkCancel       context.CancelFunc
-	linkDone         chan struct{}
-	connection       *Connection
-	pages            map[uint64]*pageView
-	pageID           uint64
-	viewChanged      chan struct{}
-	camera           *r2link.Camera
-	command          uint64
-	Options          worldsource.Options
-	mu               sync.RWMutex
-	openMu           sync.Mutex
-	current          *session
-	builtin          *mobius.World
-	revision         uint64
-	workers          chan struct{}
-	Effects          effector.Registry
-	Actors           blockactor.Registry
+	Options  worldsource.Options
+	mu       sync.RWMutex
+	openMu   sync.Mutex
+	current  *session
+	builtin  *mobius.World
+	revision uint64
+	workers  chan struct{}
+	Effects  effector.Registry
+	Actors   blockactor.Registry
 }
 
 // New 接收应用启用的特效与方块实体处理器。
 func New(effects effector.Registry, actors blockactor.Registry) *Server {
 	s := &Server{
-		ConnectMemoryMiB: 512,
-		pages:            map[uint64]*pageView{},
-		viewChanged:      make(chan struct{}, 1),
-		Options:          worldsource.Options{Options: worldinput.Options{Structure: structure.Options{MemoryMiB: 512}}},
-		builtin:          mobius.New(),
-		workers:          make(chan struct{}, 4),
-		Effects:          effects,
-		Actors:           actors,
+		Options: worldsource.Options{Options: worldinput.Options{Structure: structure.Options{MemoryMiB: 512}}},
+		builtin: mobius.New(),
+		workers: make(chan struct{}, 4),
+		Effects: effects,
+		Actors:  actors,
 	}
 	s.Close()
 	return s
@@ -141,11 +124,8 @@ func (s *Server) Open(ctx context.Context, request OpenOptions) (Info, error) {
 		source.Close()
 		return Info{}, err
 	}
-	s.stopLink()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.connection = nil
-	s.camera = nil
 	s.revision++
 	info := Info{
 		Info:               source.Input.Info,
@@ -162,7 +142,6 @@ func (s *Server) Open(ctx context.Context, request OpenOptions) (Info, error) {
 	if old != nil {
 		old.source.Close()
 	}
-	s.broadcastLocked(event{Type: "world", World: &info})
 	return info, nil
 }
 
@@ -173,7 +152,7 @@ func (s *Server) Info() Info {
 	return s.infoLocked()
 }
 
-// infoLocked 在同一锁内取得世界、诊断和连接状态，供 HTTP 与 SSE 共用。
+// infoLocked 在同一锁内取得世界与诊断。
 func (s *Server) infoLocked() Info {
 	info := s.current.info
 	if info.Scene != nil {
@@ -184,14 +163,6 @@ func (s *Server) infoLocked() Info {
 	if source, ok := s.current.source.(interface{ ClippedSections() int }); ok {
 		info.ClippedSections = source.ClippedSections()
 	}
-	if s.connection != nil {
-		connection := *s.connection
-		info.Connection = &connection
-	}
-	if source, ok := s.current.source.(*linksource.World); ok {
-		stats := source.Statistics()
-		info.LinkStats = &stats
-	}
 	return info
 }
 
@@ -199,14 +170,11 @@ func (s *Server) infoLocked() Info {
 func (s *Server) Close() {
 	s.openMu.Lock()
 	defer s.openMu.Unlock()
-	s.stopLink()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.current != nil {
 		s.current.source.Close()
 	}
-	s.connection = nil
-	s.camera = nil
 	s.revision++
 	scene := mobius.Opening()
 	s.current = &session{
@@ -225,8 +193,6 @@ func (s *Server) Close() {
 		cache:  map[string]*list.Element{},
 		order:  list.New(),
 	}
-	info := s.infoLocked()
-	s.broadcastLocked(event{Type: "world", World: &info})
 }
 func writeJSON(w http.ResponseWriter, value any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -239,9 +205,6 @@ func queryInt(r *http.Request, name string) (int, error) {
 // Handler 让内置场景与文件来源使用相同接口，并提供公共渲染资源。
 func (s *Server) Handler(web fs.FS) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/events", s.events)
-	mux.HandleFunc("POST /api/world/view", s.view)
-	mux.HandleFunc("POST /api/world/connect", s.connect)
 	assets, _ := fs.Sub(r2assets.Files, "assets")
 	core, _ := fs.Sub(r2.Files, "dist")
 	mux.Handle("/r2/assets/", http.StripPrefix("/r2/assets/", http.FileServerFS(assets)))
@@ -335,7 +298,6 @@ func (s *Server) read(w http.ResponseWriter, r *http.Request, build func(*sessio
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	value, err := build(s.current)
-	w.Header().Set("X-R2-Version", strconv.FormatUint(s.current.version, 10))
 	if source, ok := s.current.source.(interface{ ClippedSections() int }); ok {
 		w.Header().Set("X-R2-Clipped-Sections", strconv.Itoa(source.ClippedSections()))
 	}

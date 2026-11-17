@@ -210,7 +210,7 @@ fs.mkdirSync(out + "/shots", { recursive: true });
           "发布后没有重新拾取",
         );
         assert.deepEqual(
-          await page.evaluate(() => viewerR2.stream.center),
+          await page.evaluate(() => viewerR2.session.center),
           main.position.map((v) => Math.floor(v / 16)),
         );
         const selection = await page.evaluate(

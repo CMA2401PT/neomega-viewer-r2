@@ -1,6 +1,6 @@
 // 应用组装存档会话、飞行/地图视图与同一射线帧循环；UI 事件和投影分别放在独立模块。
-import { decodeTextures, createRenderer, ObjectRegistry, enchantingBook } from "/r2/index.js";
-import { WorldStream } from "./stream.js";
+import { decodeTextures, createRenderer, ObjectRegistry, enchantingBook, WorldSession } from "/r2/index.js";
+import { httpSource } from "./source.js";
 import { FlightControls } from "./controls.js";
 import { bindMovePad } from "./movepad.js";
 import { createPicker } from "./picker.js";
@@ -51,7 +51,10 @@ const registry = new ObjectRegistry().register("enchanting_book", () =>
 );
 let renderer,
   map,
-  stream,
+  /** 当前世界的会话与数据源。 @type {WorldSession|null} */
+  session = null,
+  /** @type {ReturnType<typeof httpSource>|null} */
+  source = null,
   // 最近一帧的视图（主相机或地图俯视），拍照与导出都拍这个画面。
   currentView = null,
   // 画面实际使用的预览档；选中的档还在编译时沿用上一档。
@@ -109,41 +112,38 @@ function sunDirection(hours) {
  * @param {{loaded:boolean,id:number,name:string,path:string,position:number[],scene?:{ocean:number,camera:{position:number[],yaw:number,pitch:number},time:number}}} info
  */
 let worldQueue = Promise.resolve();
-/** HTTP 与 SSE 共用切换队列，同一会话只初始化一次。 */
-function useWorld(info, preserveCamera = false) {
-  const job = worldQueue.then(() => installWorld(info, preserveCamera));
+/** 打开、关闭与启动共用切换队列，同一世界只初始化一次。 */
+function useWorld(info) {
+  const job = worldQueue.then(() => installWorld(info));
   worldQueue = job.catch(() => {});
   return job;
 }
-/** 换内容时可保留当前视角，场景重置不会擅自搬动相机。 */
-async function installWorld(info, preserveCamera) {
+/** 换世界时结束拍照，按新世界的开场位置摆放相机。 */
+async function installWorld(info) {
   if (world.id === info.id) { world = info; return; }
   if (world.id > info.id) return;
   await cancelPhoto();
-  // 离开开场场景或直接载入外部来源时从白天开始；来源之间切换及连接重置保留当前时间。
+  // 离开开场场景或直接载入外部来源时从白天开始；来源之间切换保留当前时间。
   const startDaytime = !info.scene && (!world.loaded || !!world.scene);
-  stream?.dispose();
-  stream = null;
+  session?.dispose();
+  session = source = null;
   world = info;
   closePopovers();
   hud.world(info);
   map.setWorld(info).catch((error) => hud.error(String(error)));
-  if (!preserveCamera) {
-    camera.position = [...(info.scene?.camera.position || info.position)];
-    camera.yaw = info.scene?.camera.yaw ?? -0.7;
-    camera.pitch = info.scene?.camera.pitch ?? -0.32;
-  }
+  camera.position = [...(info.scene?.camera.position || info.position)];
+  camera.yaw = info.scene?.camera.yaw ?? -0.7;
+  camera.pitch = info.scene?.camera.pitch ?? -0.32;
   if (info.scene || startDaytime) {
     settings.time = info.scene?.time ?? 10;
     hud.settings();
   }
-  stream = new WorldStream({
-    renderer,
-    world: info,
+  source = httpSource(info.id);
+  session = new WorldSession(renderer, source, {
     registry,
     onError: (message) => hud.error(message),
   });
-  stream.update(camera.position, settings);
+  session.focus(camera.position, settings);
   frames = [];
   drawn = "";
 }
@@ -201,29 +201,6 @@ map = new FullscreenMap({
 });
 
 const picker = createPicker(openWorld);
-/** 连接握手通过 SSE 发布，按钮请求只启动连接管理器。 */
-async function connectWorld(options) {
-  const response = await fetch("/api/world/connect", {
-    method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(options),
-  });
-  if (!response.ok) throw Error(await response.text());
-  const info = await response.json();
-  if (info.id === world.id) world = info;
-}
-element("connect-source").onclick = () => {
-  closePopovers();
-  element("link-url").value = world.connection?.url || "tcp://127.0.0.1:2414";
-  element("link-memory").value = world.connection?.memoryMiB || 512;
-  element("link-fix").checked = world.bedrockFix ?? true;
-  element("link-message").textContent = "";
-  element("link-dialog").showModal();
-};
-element("link-start").onclick = async () => {
-  try {
-    await connectWorld({url:element("link-url").value,memoryMiB:Number(element("link-memory").value),bedrockFix:element("link-fix").checked});
-    element("link-dialog").close();
-  } catch (error) { element("link-message").textContent = String(error); }
-};
 element("open-world").onclick = () => {
   closePopovers();
   picker({ world });
@@ -273,7 +250,7 @@ async function applyTextures(path) {
   const maxSize = Number(element("texture-size").value);
   try {
     const set = await loadTextures(path, maxSize);
-    if (stream) await stream.setTextures(set);
+    if (session) await session.setTextures(set);
     else renderer.setTextures(set);
     settings.texturePath = path;
     settings.textureSize = maxSize;
@@ -457,59 +434,6 @@ async function finishPhoto(download) {
   showTaskStatus(performance.now());
 }
 
-let pageID = 0, command = 0, eventQueue = Promise.resolve(), sentView = "", viewAt = 0, viewBusy = false;
-/** 位置命令结束照片和持续移动，省略朝向时保留原来的视线。 */
-async function resetCamera(value) {
-  await cancelPhoto();
-  controls.cancel();
-  map.hide();
-  camera.position = [...value.position];
-  if (value.yaw !== undefined) camera.yaw = value.yaw;
-  if (value.pitch !== undefined) camera.pitch = value.pitch;
-  drawn = "";
-  sentView = "";
-}
-/** SSE 只通知变化；重连用当前快照同步，不保留历史事件队列。 */
-const events = new EventSource("/api/events");
-events.onmessage = ({data}) => {
-  const value = JSON.parse(data);
-  eventQueue = eventQueue.then(async () => {
-    if (value.type === "sync" || value.type === "world") {
-      if (value.world.id < world.id) return;
-      const same = value.world.id === world.id;
-      await useWorld(value.world, value.preserveCamera);
-      if (value.type === "sync") {
-        pageID = value.page;
-        sentView = "";
-        if (same && world.kind === "connection") { stream.invalidateAll(value.version || 0); await map.refreshChunks(); }
-      }
-      if (value.camera && value.command > command) { await resetCamera(value.camera); command = value.command; }
-    } else if (value.type === "connection") {
-      if (value.world.id === world.id) world = value.world;
-    } else if (value.worldId === world.id) {
-      if (value.type === "regions") {
-        world = value.world;
-        stream.clippedSections = world.clippedSections;
-        stream.invalidateRegions(value.regions, value.version);
-        await map.refreshChunks();
-      } else if (value.type === "camera" && value.command > command) {
-        await resetCamera(value.camera); command = value.command;
-      }
-    }
-  }).catch(error => hud.error(String(error)));
-};
-/** 只有相机或范围改变才上报，页面存活由 SSE 连接本身表达。 */
-function reportView(now) {
-  if (!pageID || !stream || !world.connection || viewBusy || now - viewAt < 200) return;
-  const value = {page:pageID,world:world.id,view:{...camera,nearRadius:settings.nearRadius,farRadius:settings.farRadius},ranges:stream.interestRanges()};
-  const text = JSON.stringify(value);
-  if (text === sentView) return;
-  viewAt = now; viewBusy = true;
-  fetch("/api/world/view", {method:"POST",headers:{"Content-Type":"application/json"},body:text})
-    .then(response => { if (response.ok) sentView = text; })
-    .catch(error => hud.error(String(error)))
-    .finally(() => { viewBusy = false; });
-}
 /** 同一帧循环消费当前视图的相机；世界、光照和累积仍使用同一条绘制路径。
  * @param {number} now
  */
@@ -541,10 +465,9 @@ function frame(now) {
     settings.time = (settings.time + (dt * 24) / 240) % 24;
     hud.settings();
   }
-  stream?.update(view.center, { ...settings, nearPosition: camera.position });
-  stream?.publish();
-  reportView(now);
-  map.refresh(stream);
+  session?.focus(view.center, { ...settings, nearPosition: camera.position });
+  session?.publish();
+  map.refresh(session);
   const scale = renderScale(),
     width = Math.round(innerWidth * scale),
     height = Math.round(innerHeight * scale);
@@ -579,7 +502,7 @@ function frame(now) {
       fog: view.fog,
       objects,
     });
-    if (rendered && stream?.stats.loaded > 0) finishStartup();
+    if (rendered && session?.stats.loaded > 0) finishStartup();
   }
   if (changed) {
     if (now - drawnAt < 250) frames.push(now - drawnAt);
@@ -597,26 +520,17 @@ function frame(now) {
         ? `累积 ${renderer.accumulated}`
         : "静止"
       : `${Math.round(1000 / interval) || "—"} FPS`;
-    if (stream) {
-      const stats = stream.stats,
+    if (session) {
+      const stats = session.stats,
         times = renderer.times.sort((a, b) => a - b),
         median = times[Math.floor(times.length / 2)];
-      const connection = world.connection;
-      hud.connection(connection, world.loaded);
-      hud.loading(stats, connection);
-      const clipped = world.kind === "connection" ? world.clippedSections : stats.clippedSections;
+      hud.loading(stats);
+      const clipped = Math.max(world.clippedSections || 0, source.clippedSections);
       element("height-diagnostics").hidden = clipped === 0;
-      element("height-diagnostics").textContent = `有 ${clipped} 个 section 超出可显示高度（Y -64～447，${world.kind === "connection" ? "按当前保留区块统计" : "按已读取区块统计"}）`;
+      element("height-diagnostics").textContent = `有 ${clipped} 个 section 超出可显示高度（Y -64～447，按已读取区块统计）`;
       hud.details([
-        ["来源", world.kind === "connection" ? "连接" : world.kind || "内置场景"],
+        ["来源", world.kind || "内置场景"],
         ["预览渲染器", TIER_NAMES[shownTier]],
-        ...(world.connection ? [
-          ["供给方式", world.connection.delivery || "握手中"],
-          ["来源维度 / 高度", `${world.dimension} · [${world.minY}, ${world.minY + world.height})`],
-          ["当前保留区块", String(world.linkStats?.chunks || 0)],
-          ["连接数据内存", `${((world.linkStats?.bytes || 0) / 1024 ** 2).toFixed(1)} / ${world.connection.memoryMiB} MiB`],
-          ["未知 Bedrock 方块", String(world.linkStats?.unknownBlocks || 0)],
-        ] : []),
         ...(world.reusedStructure ? [["结构输出", "复用已有存档"]] : []),
         ["近景半径", `${settings.nearRadius} 区块`],
         ["远景半径", `${settings.farRadius} 区块`],
@@ -628,6 +542,7 @@ function frame(now) {
         ["已发布区域", `${stats.loaded}/${stats.wanted}`],
         ["待更新 / 失败", `${stats.pending} / ${stats.failed}`],
         ["特殊对象", String(stats.objects)],
+        ...(stats.unknownBlocks ? [["未知方块", String(stats.unknownBlocks)]] : []),
         ["累计传输", `${(stats.bytes / 1024 ** 2).toFixed(1)} MiB`],
         ["区域显存", `${(stats.usedBytes / 1024 ** 2).toFixed(1)} MiB`],
         ["GPU 纹理", `${(renderer.textureBytes / 1024 ** 2).toFixed(1)} MiB`],
@@ -663,7 +578,7 @@ for (const delay of [15000, 60000])
   }, delay);
 if (settings.stillAccumulation) compileTier("accumulation");
 window.addEventListener("pagehide", () => {
-  stream?.dispose();
+  session?.dispose();
   renderer.dispose();
 });
 // 验收入口仍使用实际会话、流式调度和绘制路径，不替换成测试场景。
@@ -682,7 +597,7 @@ globalThis.viewerR2 = {
         pending: !!map.pending,
         tiles: map.tiles.length,
       },
-      stream: stream?.stats,
+      stream: session?.stats,
       gpuTimes: renderer.times,
       frames: [...frames],
       error: renderer.gl.getError(),
@@ -700,14 +615,13 @@ globalThis.viewerR2 = {
     continuous = value;
   },
   openWorld,
-  connectWorld,
   applyTextures,
   close: () => element("close-world").click(),
   get renderer() {
     return renderer;
   },
-  get stream() {
-    return stream;
+  get session() {
+    return session;
   },
   get map() {
     return map;

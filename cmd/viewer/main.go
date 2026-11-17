@@ -38,8 +38,6 @@ func main() {
 func run() error {
 	listen := flag.String("listen", "127.0.0.1:2412", "监听地址")
 	world := flag.String("world", "", "启动时打开 Java、Bedrock、PackFS 或结构文件，留空显示 Möbius")
-	connect := flag.String("connect", "", "主动连接 R2Link 数据源（tcp:// 或 ws://）")
-	connectMemory := flag.Int("connect-memory-mib", 512, "连接世界内存预算（MiB）")
 	dimension := flag.String("dimension", "", "Java 维度目录或 Bedrock 维度 0/1/2，默认主世界")
 	bedrockFix := flag.Bool("bedrock-fix", true, "修复 Bedrock 转换后的邻接属性")
 	structureMemory := flag.Int("structure-memory-mib", 512, "结构转换工作内存预算（MiB，至少 64）")
@@ -53,9 +51,6 @@ func run() error {
 	if *showVersion {
 		fmt.Println(version)
 		return nil
-	}
-	if *world != "" && *connect != "" {
-		return fmt.Errorf("-world 与 -connect 请选择一个")
 	}
 	if _, ok := desktop.FindChoice(*open); !ok && *open != "system" {
 		return fmt.Errorf("-open 不认识 %q", *open)
@@ -89,17 +84,7 @@ func run() error {
 	)
 	service.Options.SkipBedrockFix = !*bedrockFix
 	service.Options.Structure = structure.Options{MemoryMiB: *structureMemory, Workers: *structureWorkers}
-	service.ConnectMemoryMiB = *connectMemory
 	defer service.Close()
-	if *connect != "" {
-		if _, err := service.Connect(server.ConnectOptions{
-			URL:        *connect,
-			MemoryMiB:  *connectMemory,
-			BedrockFix: bedrockFix,
-		}); err != nil {
-			return err
-		}
-	}
 	if *world != "" {
 		path := filepath.Clean(*world)
 		if filepath.Base(path) == "level.dat" {

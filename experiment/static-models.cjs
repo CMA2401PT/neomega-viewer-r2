@@ -102,9 +102,9 @@ fs.mkdirSync(out, { recursive: true });
     await page.evaluate(() => viewerR2.setCamera([384, 6, 168], [128, 2, 128]));
     await settle();
     const border = await page.evaluate(() => ({
-      source: viewerR2.stream.entries.get("0/1")?.visible,
+      source: viewerR2.session.entries.get("0/1")?.visible,
       fragments:
-        viewerR2.stream.gpu.regions.get("1/1")?.stats.fragmentReferences,
+        viewerR2.session.gpu.regions.get("1/1")?.stats.fragmentReferences,
     }));
     assert.equal(border.source, false);
     assert(border.fragments > 0, "可见范围外来源的片段丢失");
