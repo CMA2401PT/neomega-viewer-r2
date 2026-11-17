@@ -15,7 +15,6 @@ type World struct {
 	HeightDiagnostics bool
 	ReadChunk         func(context.Context, celler.ChunkPos) (*converter.JavaChunk, error)
 	ScanChunks        func(context.Context) ([]celler.ChunkPos, error)
-	Mapping           map[string]uint32
 	mu                sync.Mutex
 	clipped           map[celler.ChunkPos]int
 }
@@ -68,10 +67,9 @@ func (w *World) Chunks(ctx context.Context) ([]byte, error) {
 	return index.Encode(), nil
 }
 
-// Region 只映射调色板条目，窗口之外的小节计入诊断而不进入固定高度的 GPU 目录。
+// Region 把调色板条目换成方块哈希，窗口之外的小节计入诊断而不进入固定高度的 GPU 目录。
 func (w *World) Region(ctx context.Context, rx, rz int) ([]byte, error) {
 	var sections []Section
-	var unknown uint32
 	for x := rx * 8; x < (rx+1)*8; x++ {
 		for z := rz * 8; z < (rz+1)*8; z++ {
 			if err := ctx.Err(); err != nil {
@@ -93,12 +91,8 @@ func (w *World) Region(ctx context.Context, rx, rz int) ([]byte, error) {
 				mapped := make([]uint32, len(palette))
 				nonAir := false
 				for i, state := range palette {
-					id, ok := w.Mapping[string(state)]
-					if !ok {
-						unknown++
-					}
-					mapped[i] = id
-					nonAir = nonAir || id != 0
+					mapped[i] = Hash(state)
+					nonAir = nonAir || !airHashes[mapped[i]]
 				}
 				if !nonAir {
 					continue
@@ -112,5 +106,5 @@ func (w *World) Region(ctx context.Context, rx, rz int) ([]byte, error) {
 			}
 		}
 	}
-	return EncodeRegion(sections, unknown), nil
+	return EncodeRegion(sections), nil
 }

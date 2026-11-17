@@ -95,21 +95,19 @@ type Server struct {
 	current          *session
 	builtin          *mobius.World
 	revision         uint64
-	mapping          map[string]uint32
 	workers          chan struct{}
 	Effects          effector.Registry
 	Actors           blockactor.Registry
 }
 
-// New 接收启动时准备好的状态映射，使准备进度与 HTTP 会话管理各自独立。
-func New(mapping map[string]uint32, effects effector.Registry, actors blockactor.Registry) *Server {
+// New 接收应用启用的特效与方块实体处理器。
+func New(effects effector.Registry, actors blockactor.Registry) *Server {
 	s := &Server{
 		ConnectMemoryMiB: 512,
 		pages:            map[uint64]*pageView{},
 		viewChanged:      make(chan struct{}, 1),
 		Options:          worldsource.Options{Options: worldinput.Options{Structure: structure.Options{MemoryMiB: 512}}},
-		mapping:          mapping,
-		builtin:          mobius.New(mapping),
+		builtin:          mobius.New(),
 		workers:          make(chan struct{}, 4),
 		Effects:          effects,
 		Actors:           actors,
@@ -135,7 +133,7 @@ func (s *Server) Open(ctx context.Context, request OpenOptions) (Info, error) {
 	if request.StructureWorkers != nil {
 		options.Structure.Workers = *request.StructureWorkers
 	}
-	source, err := worldsource.Open(ctx, options, s.mapping)
+	source, err := worldsource.Open(ctx, options)
 	if err != nil {
 		return Info{}, err
 	}

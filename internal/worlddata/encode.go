@@ -10,13 +10,17 @@ import (
 type Section struct {
 	Position [3]int
 	Bits     uint32
-	Palette  []uint32
-	Words    []uint32
+	// Palette 保存方块哈希；渲染器按资源包的状态表换成模型，表外的哈希画成空气。
+	Palette []uint32
+	Words   []uint32
 }
 
+// RegionMagic 标识调色板为方块哈希的区域格式（"TLP4"）。
+const RegionMagic = 0x34504c54
+
 // EncodeRegion 把 8×8 区块区域写为统一的小端调色板格式，坐标按 int32 解释。
-func EncodeRegion(sections []Section, unknown uint32) []byte {
-	words := []uint32{0x33504c54, uint32(len(sections)), unknown}
+func EncodeRegion(sections []Section) []byte {
+	words := []uint32{RegionMagic, uint32(len(sections))}
 	for _, section := range sections {
 		words = append(words,
 			uint32(section.Position[0]),

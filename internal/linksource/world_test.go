@@ -16,7 +16,7 @@ func section(y int32, state string) r2link.Section {
 // patch 从空气起步，replace 清掉未列出高度，删除与预算失败都不能留下半份提交。
 func TestCommitModesAndBudget(t *testing.T) {
 	welcome := r2link.Message{Blocks: "java", Delivery: "push", Scene: &r2link.Scene{Dimension: ".", MinY: -64, Height: 384}}
-	world, err := New(welcome, map[string]uint32{"minecraft:stone []": 1}, false, 1<<20)
+	world, err := New(welcome, false, 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestCommitModesAndBudget(t *testing.T) {
 
 // 并发读取只能看到完整快照；关闭与提交交错也必须保持内存访问安全。
 func TestConcurrentCommitReadClose(t *testing.T) {
-	world, err := New(r2link.Message{Blocks: "java", Delivery: "push", Scene: &r2link.Scene{Height: 384}}, nil, false, 1<<20)
+	world, err := New(r2link.Message{Blocks: "java", Delivery: "push", Scene: &r2link.Scene{Height: 384}}, false, 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestConcurrentCommitReadClose(t *testing.T) {
 
 // Bedrock 双层转换保留含水；邻居到达和删除都重新修复连接属性。
 func TestBedrockLayersAndNeighbours(t *testing.T) {
-	world, err := New(r2link.Message{Blocks: "bedrock", Delivery: "push", Scene: &r2link.Scene{Dimension: "0", Height: 384}}, nil, true, 1<<20)
+	world, err := New(r2link.Message{Blocks: "bedrock", Delivery: "push", Scene: &r2link.Scene{Dimension: "0", Height: 384}}, true, 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}

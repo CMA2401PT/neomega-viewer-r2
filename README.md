@@ -16,7 +16,7 @@ neOmega Viewer R2 前身是 neOmega Viewer (https://github.com/CMA2401PT/neomega
 go run ./apps/neomega-viewer-r2/cmd/viewer -listen 127.0.0.1:2412
 ```
 
-启动终端先显示准备阶段，包括读取模型目录和建立方块状态映射，完成后显示 WebUI 地址并打开默认浏览器。`-browser=false` 只显示地址，适合远程运行或浏览器验收。`-version` 打印版本后退出。
+启动终端先显示准备阶段，完成后显示 WebUI 地址并打开默认浏览器。`-browser=false` 只显示地址，适合远程运行或浏览器验收。`-version` 打印版本后退出。
 
 浏览器访问 <http://127.0.0.1:2412>。Java 世界按维度的 `region` 目录读取，Bedrock 世界按 `db` 目录读取。
 
@@ -116,7 +116,7 @@ curl -X POST http://127.0.0.1:2412/api/textures \
 
 网页从 `GET /api/world` 获取当前会话。`loaded: true` 表示存在可加载的来源，存档与内置场景都满足这一点。内置场景的 `name` 为 `Möbius`、`path` 为空，并额外携带 `scene`：`ocean` 是海面 Y 坐标，`camera` 包含 `position`、`yaw`、`pitch`，角度使用弧度，`time` 以小时表示开场时刻。顶层 `position` 与开场相机位置一致。存档响应省略 `scene`。`POST /api/world/open` 接收 `path`、`dimension`、`bedrockFix`、`structureMemoryMiB`、`structureWorkers`。默认返回 JSON 会话描述；请求头 `Accept: application/x-ndjson` 时逐行返回 `progress` 消息，最后返回 `world` 或 `error`。`POST /api/world/close` 返回 Möbius 会话描述，关闭会恢复内置场景；区域、对象与占用表接口共用会话编号，旧编号返回 HTTP 409。
 
-服务启动时建立一次“Java 状态 → 静态模型编号”映射。区域接口读取和解压存档，仅转换调色板条目，保留压缩格子索引，不生成模型、剔面或合并网格。一个区域包含 8×8 区块；服务端保留最多约 64 MiB 的区域响应缓存。Möbius 的方块和区域字节在首次读取时生成一次，之后各会话复用；它与存档共用二进制编码，对象列表为空。
+区域接口读取和解压存档，仅把调色板条目换成方块哈希（渲染器按资源包的状态表解释），保留压缩格子索引，不生成模型、剔面或合并网格。一个区域包含 8×8 区块；服务端保留最多约 64 MiB 的区域响应缓存。Möbius 的方块和区域字节在首次读取时生成一次，之后各会话复用；它与存档共用二进制编码，对象列表为空。
 
 浏览器分别限制网络下载、后台准备和 GPU 发布。四路请求优先读取靠近相机的区域；后台线程登记跨格片段并生成空域掩码；主线程每帧发布一个完成的区域，未完成部分稍后补齐。移动时复用重叠区域，离开范围的区域撤销候选并回收地址。静态窗口周围保留一圈来源区域，保证边界模型完整。近景视距变化只更新特殊对象；对象候选没有变化的静态区域不重新准备，也不重新下载索引。
 

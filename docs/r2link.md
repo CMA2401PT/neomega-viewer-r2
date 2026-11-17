@@ -71,7 +71,7 @@ Bedrock: minecraft:oak_stairs ["upside_down_bit"=false,"weirdo_direction"=0]
 Bedrock: minecraft:water ["liquid_depth"=0]
 ```
 
-属性顺序可以不同，R2 会归一化。有方向、颜色等属性时应发送完整实际状态。Java 通过应用的状态映射显示；Bedrock 通过共用转换表兼容名称与属性。未知语义按空气显示，Bedrock 转换缺失在场景信息中按当前保留内容统计。
+属性顺序可以不同，R2 会归一化。有方向、颜色等属性时应发送完整实际状态。Java 状态按哈希交给渲染器的状态表；Bedrock 通过共用转换表兼容名称与属性。未知语义按空气显示，Bedrock 转换缺失在场景信息中按当前保留内容统计。
 
 R2Link v1 的内容是方块状态与层。NBT 方块实体、普通实体没有线格式；依赖 NBT 的文字和外观不能仅由状态恢复。Bedrock 第二层水会合并为 Java 的含水属性，额外水层的可见效果取决于 R2 的状态模型。
 

@@ -316,7 +316,6 @@ func (s *Server) linkWorld(
 ) (*linksource.World, error) {
 	world, err := linksource.New(
 		welcome,
-		s.mapping,
 		fix,
 		options.MemoryMiB<<20,
 	)

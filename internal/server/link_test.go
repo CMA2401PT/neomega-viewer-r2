@@ -61,7 +61,7 @@ func TestLinkCommitAndCloseConcurrent(t *testing.T) {
 			}()
 		}
 	}()
-	service := New(map[string]uint32{"minecraft:stone []": 1}, nil, nil)
+	service := New(nil, nil)
 	defer service.Close()
 	handler := service.Handler(fstest.MapFS{})
 	var readers sync.WaitGroup
@@ -111,7 +111,7 @@ func TestLinkCommitAndCloseConcurrent(t *testing.T) {
 
 // 页面只随 SSE 登记，断开后必须自动注销，并取消它贡献的关注范围。
 func TestSSEPageLifetime(t *testing.T) {
-	service := New(nil, nil, nil)
+	service := New(nil, nil)
 	defer service.Close()
 	server := httptest.NewServer(service.Handler(fstest.MapFS{}))
 	defer server.Close()

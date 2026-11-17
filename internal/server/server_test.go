@@ -22,7 +22,6 @@ import (
 	"neomega-r2/blockactor"
 	"neomega-r2/effector"
 	"neomega-r2/object"
-	"neomega-view-utils/r2assets"
 	"neomega-viewer-r2/internal/worlddata"
 )
 
@@ -65,15 +64,10 @@ func TestSessionAndNearObjectBoundary(t *testing.T) {
 	if err = source.Close(); err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := r2assets.OpenCatalog()
-	if err != nil {
-		t.Fatal(err)
-	}
 	actor := &testActor{}
 	actors := blockactor.Registry{}
 	actors.Register(actor)
 	service := New(
-		worlddata.StateMapping(catalog),
 		effector.Registry{"minecraft:enchanting_table": effector.Kind("enchanting_book")},
 		actors,
 	)
@@ -200,7 +194,7 @@ func TestWorldChunks(t *testing.T) {
 	if err = source.Close(); err != nil {
 		t.Fatal(err)
 	}
-	service := New(nil, nil, nil)
+	service := New(nil, nil)
 	defer service.Close()
 	info, err := service.Open(context.Background(), OpenOptions{Path: path})
 	if err != nil {
@@ -269,12 +263,7 @@ func TestWorldChunks(t *testing.T) {
 
 // 内置场景沿用区域协议与地图占用协议，关闭后只更换会话编号，不改变场景内容。
 func TestMobiusSession(t *testing.T) {
-	catalog, err := r2assets.OpenCatalog()
-	if err != nil {
-		t.Fatal(err)
-	}
-	mapping := worlddata.StateMapping(catalog)
-	service := New(mapping, nil, nil)
+	service := New(nil, nil)
 	defer service.Close()
 	handler := service.Handler(fstest.MapFS{})
 	request := func(url string) *httptest.ResponseRecorder {
@@ -287,6 +276,7 @@ func TestMobiusSession(t *testing.T) {
 		return response
 	}
 	var info Info
+	var err error
 	if err = json.Unmarshal(request("/api/world").Body.Bytes(), &info); err != nil {
 		t.Fatal(err)
 	}
@@ -328,10 +318,10 @@ func TestMobiusSession(t *testing.T) {
 			if err = binary.Read(bytes.NewReader(data), binary.LittleEndian, words); err != nil {
 				t.Fatal(err)
 			}
-			if words[0] != 0x33504c54 || words[1] == 0 || words[2] != 0 {
-				t.Fatalf("区域头错误：%v", words[:3])
+			if words[0] != worlddata.RegionMagic || words[1] == 0 {
+				t.Fatalf("区域头错误：%v", words[:2])
 			}
-			cursor := 3
+			cursor := 2
 			for range words[1] {
 				x, y, z := int(int32(words[cursor])), int(int32(words[cursor+1])), int(int32(words[cursor+2]))
 				bits, count, length := words[cursor+3], int(words[cursor+4]), int(words[cursor+5])
@@ -352,10 +342,10 @@ func TestMobiusSession(t *testing.T) {
 					for bz := range 16 {
 						for by := range 16 {
 							model := storage.Get(layer_storage.At(bx, by, bz))
-							if model == 0 {
+							if model == worlddata.AirHash {
 								continue
 							}
-							if model != mapping["minecraft:sea_lantern []"] {
+							if model != worlddata.Hash("minecraft:sea_lantern []") {
 								t.Fatalf("出现海晶灯之外的模型：%d", model)
 							}
 							lanterns++

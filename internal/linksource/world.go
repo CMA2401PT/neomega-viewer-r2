@@ -54,7 +54,7 @@ type Stats struct {
 }
 
 // New 为一次握手或场景重置创建空表，来源的高度说明保留在服务会话中。
-func New(welcome r2link.Message, mapping map[string]uint32, fix bool, limit int) (*World, error) {
+func New(welcome r2link.Message, fix bool, limit int) (*World, error) {
 	if welcome.Blocks != "java" && welcome.Blocks != "bedrock" {
 		return nil, fmt.Errorf("blocks 应为 java 或 bedrock")
 	}
@@ -79,7 +79,6 @@ func New(welcome r2link.Message, mapping map[string]uint32, fix bool, limit int)
 		}
 	}
 	world.adapter = &worlddata.World{
-		Mapping: mapping,
 		ReadChunk: func(ctx context.Context, pos celler.ChunkPos) (*core.JavaChunk, error) {
 			if column := world.columns[pos]; column != nil {
 				return column.fixed, nil

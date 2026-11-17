@@ -12,11 +12,9 @@ import (
 	"neomega-converter-core/structure"
 	"neomega-r2/blockactor"
 	"neomega-r2/effector"
-	"neomega-view-utils/r2assets"
 	app "neomega-viewer-r2"
 	"neomega-viewer-r2/internal/desktop"
 	"neomega-viewer-r2/internal/server"
-	"neomega-viewer-r2/internal/worlddata"
 	"net"
 	"net/http"
 	"os"
@@ -84,16 +82,8 @@ func run() error {
 	desktop.PrintBanner(output, version, colored)
 	progress := desktop.Progress{Out: output, Colored: colored}
 	progress.Step("准备中…")
-	progress.Step("读取模型目录…")
-	catalog, err := r2assets.OpenCatalog()
-	if err != nil {
-		return err
-	}
-	progress.Step("建立方块状态映射…")
-	mapping := worlddata.StateMapping(catalog)
 	// 新的特效和 NBT 方块处理器在这里显式组装，核心不决定应用启用哪些内容。
 	service := server.New(
-		mapping,
 		effector.Registry{"minecraft:enchanting_table": effector.Kind("enchanting_book")},
 		blockactor.Registry{},
 	)
@@ -116,7 +106,7 @@ func run() error {
 			path = filepath.Dir(path)
 		}
 		progress.Step("打开存档 " + filepath.Base(path) + "…")
-		if _, err = service.Open(ctx, server.OpenOptions{
+		if _, err := service.Open(ctx, server.OpenOptions{
 			Path:      *world,
 			Dimension: *dimension,
 			Progress: func(value structure.Progress) {

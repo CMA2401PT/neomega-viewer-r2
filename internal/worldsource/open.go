@@ -30,12 +30,12 @@ type World struct {
 }
 
 // Open 在发布会话前完成原生打开与修复器准备，失败时保留调用方的旧世界。
-func Open(ctx context.Context, options Options, mapping map[string]uint32) (*World, error) {
+func Open(ctx context.Context, options Options) (*World, error) {
 	input, err := worldinput.Open(ctx, options.Options)
 	if err != nil {
 		return nil, err
 	}
-	output := &worlddata.World{Mapping: mapping, HeightDiagnostics: true}
+	output := &worlddata.World{HeightDiagnostics: true}
 	if input.Java != nil {
 		output.ScanChunks = input.Java.Chunks
 		output.ReadChunk = func(ctx context.Context, pos celler.ChunkPos) (*converter.JavaChunk, error) {

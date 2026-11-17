@@ -42,7 +42,7 @@ func TestBedrockDimensionsAndFix(t *testing.T) {
 			world, err := Open(context.Background(), Options{
 				Options:        worldinput.Options{Path: path, Dimension: strconv.Itoa(int(dim))},
 				SkipBedrockFix: skip,
-			}, nil)
+			})
 			if err != nil {
 				t.Fatal(err)
 			}

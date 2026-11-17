@@ -20,7 +20,6 @@ func TestHeightWindowAndDiagnostics(t *testing.T) {
 	}
 	world := &World{
 		HeightDiagnostics: true,
-		Mapping:           map[string]uint32{"minecraft:stone []": 1},
 		ReadChunk: func(ctx context.Context, pos celler.ChunkPos) (*converter.JavaChunk, error) {
 			if pos == (celler.ChunkPos{}) {
 				return chunk, nil

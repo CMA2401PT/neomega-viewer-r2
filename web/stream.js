@@ -42,6 +42,7 @@ export class WorldStream {
     this.worker.postMessage({
       type: "init",
       catalog: renderer.catalog,
+      states: renderer.states,
     });
   }
   near(x, z) {

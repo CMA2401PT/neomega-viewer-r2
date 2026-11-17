@@ -71,14 +71,15 @@ fs.mkdirSync(out, { recursive: true });
         const { decodeRegion, unpack } = await import("/r2/scene/prepare.js");
         const { world } = viewerR2.state;
         const response = await fetch(`/api/world/region?world=${world.id}&x=0&z=0`);
-        const region = decodeRegion(await response.arrayBuffer());
+        const region = decodeRegion(await response.arrayBuffer(), viewerR2.renderer.states);
+        // 场景只有海晶灯一种方块：解码后除空气外只有一个模型。
         const models = new Set(region.sections.flatMap((section) => [...unpack(section)]));
-        const lantern = viewerR2.renderer.catalog.states["minecraft:sea_lantern []"];
+        models.delete(0);
         return {
           sections: region.sections.length,
           unknown: region.unknown,
-          onlyLantern: [...models].every((model) => model === 0 || model === lantern),
-          hasLantern: models.has(lantern),
+          onlyLantern: models.size <= 1,
+          hasLantern: models.size === 1,
         };
       });
       assert(decoded.sections > 0 && decoded.hasLantern && decoded.onlyLantern);

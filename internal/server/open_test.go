@@ -27,7 +27,7 @@ func TestStreamingStructureOpen(t *testing.T) {
 	if err := os.WriteFile(path, raw, 0644); err != nil {
 		t.Fatal(err)
 	}
-	server := New(nil, nil, nil)
+	server := New(nil, nil)
 	defer server.Close()
 	handler := server.Handler(fstest.MapFS{})
 	for _, memory := range []int{32, 64} {

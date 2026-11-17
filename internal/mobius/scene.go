@@ -61,11 +61,11 @@ type sceneData struct {
 	empty   []byte
 }
 
-// New 固定模型映射，并将几何与编码延迟到首次请求，关闭后仍可复用。
-func New(mapping map[string]uint32) *World {
+// New 将几何与编码延迟到首次请求，关闭后仍可复用。
+func New() *World {
 	return &World{data: sync.OnceValue(func() sceneData {
 		sections := make(map[[3]int]*layer_storage.Palette[uint32])
-		paintMobiusRing(sections, mapping["minecraft:sea_lantern []"])
+		paintMobiusRing(sections, worlddata.Hash("minecraft:sea_lantern []"))
 		positions := make([][3]int, 0, len(sections))
 		for position := range sections {
 			positions = append(positions, position)
@@ -94,10 +94,10 @@ func New(mapping map[string]uint32) *World {
 		data := sceneData{
 			regions: make(map[[2]int][]byte),
 			chunks:  index.Encode(),
-			empty:   worlddata.EncodeRegion(nil, 0),
+			empty:   worlddata.EncodeRegion(nil),
 		}
 		for position, sections := range regions {
-			data.regions[position] = worlddata.EncodeRegion(sections, 0)
+			data.regions[position] = worlddata.EncodeRegion(sections)
 		}
 		return data
 	})}
@@ -151,7 +151,7 @@ func paintMobiusRing(sections map[[3]int]*layer_storage.Palette[uint32], lantern
 				position := [3]int{x >> 4, y >> 4, z >> 4}
 				blocks := sections[position]
 				if blocks == nil {
-					blocks = layer_storage.MakePaletteStorage(uint32(0))
+					blocks = layer_storage.MakePaletteStorage(worlddata.AirHash)
 					sections[position] = blocks
 				}
 				blocks.Set(layer_storage.At(x&15, y&15, z&15), lantern)
