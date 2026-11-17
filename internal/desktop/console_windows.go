@@ -35,7 +35,7 @@ type inputRecord struct {
 	data [16]byte
 }
 
-// ListenChoices 让控制台接收鼠标点击和数字键，点中按钮或按 1～3 时调用 pick。
+// ListenChoices 让控制台接收鼠标点击和数字键，点中按钮或按对应数字键 时调用 pick。
 // 关闭快速编辑模式，否则单击会变成选择文字；返回恢复原输入模式的函数。输入不是控制台时 ok 为假。
 func ListenChoices(pick func(int)) (restore func(), ok bool) {
 	input := syscall.Handle(os.Stdin.Fd())

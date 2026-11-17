@@ -16,11 +16,11 @@ neOmega Viewer R2 前身是 neOmega Viewer (https://github.com/CMA2401PT/neomega
 go run ./apps/neomega-viewer-r2/cmd/viewer -listen 127.0.0.1:2412
 ```
 
-启动终端先显示准备阶段，完成后显示 WebUI 地址并打开默认浏览器。`-browser=false` 只显示地址，适合远程运行或浏览器验收。`-version` 打印版本后退出。
+启动终端先显示准备阶段，完成后显示 WebUI 地址，默认不弹出窗口。macOS 等平台直接点击链接，Windows 可从终端选择浏览器和图形后端。`-version` 打印版本后退出。
 
 浏览器访问 <http://127.0.0.1:2412>。Java 世界按维度的 `region` 目录读取，Bedrock 世界按 `db` 目录读取。
 
-Windows 上直接运行 `neomega-viewer-r2.exe` 即可：它启动服务，并用独立 Chrome／Edge 配置打开 1240×840 的应用窗口，浏览器设置与日常浏览器分开。默认用 Edge + Vulkan 打开，没装 Edge 时依次换 Chrome + Vulkan、Chrome + OpenGL。终端里列出 `Edge + Vulkan`、`Chrome + Vulkan`、`Chrome + OpenGL` 三个按钮，打不开、黑屏、很卡或一直在编译时，直接点按钮（或按数字键 1～3）用另一种组合再开一个窗口；为了能点击，终端的快速编辑（单击选字）在运行期间关闭。`-open` 指定启动时用的组合（`edge-vulkan` 默认、`chrome-vulkan`、`chrome-gl`；`system` 表示系统默认浏览器且不带参数），`-browser=false` 只起服务。每种组合使用独立的浏览器配置目录，按 exe 旁的 `runtime/`、`%LOCALAPPDATA%`、临时目录取第一个可写的。不指定 ANGLE 后端时浏览器默认用 Direct3D 11，AMD 780M 上已复现大型射线程序编译过慢，所以不用它；初始化期间页面顶部显示正在编译哪个射线程序以及已用时间。
+Windows 上直接运行 `neomega-viewer-r2.exe` 默认只启动服务。点击终端按钮或按数字键 1～4 打开独立的 1240×840 应用窗口，依次为 Chrome + OpenGL（推荐）、Chrome + Vulkan、Edge + OpenGL、Edge + Vulkan。需要自动打开时传入 `-browser`，可用 `-open` 选择组合（默认 `chrome-gl`，其余为 `chrome-vulkan`、`edge-gl`、`edge-vulkan`，`system` 表示系统默认浏览器）。每种组合使用独立的浏览器配置目录，按 exe 旁的 `runtime/`、`%LOCALAPPDATA%`、临时目录取第一个可写的。不指定 ANGLE 后端时浏览器默认用 Direct3D 11，AMD 780M 上已复现大型射线程序编译过慢，所以不用它；初始化期间页面顶部显示正在编译哪个射线程序以及已用时间。
 
 每次启动都在 exe 旁写一份 `neomega-viewer-r2-log.txt`（不可写时放到用户缓存或临时目录，终端里会印出实际位置），记录程序版本、Windows 版本、找到的浏览器及版本、每次打开窗口的命令和浏览器启动进程的退出代码，以及网页上报的显卡与图形后端、射线程序编译耗时、累积模块准备、错误、WebGL 上下文丢失和运行 15 秒、60 秒时的帧率与 GPU 时间。遇到问题时把这份文件发给开发者。程序所在目录或其上级显式设置了拒绝项或低完整性标签（例如开发工具沙箱保护的工作区）时，不自动打开浏览器，也不显示按钮，只在终端明确提示把程序复制到别的目录再运行：实测从这类目录启动的 Chrome 立即崩溃、Edge 一直白屏，浏览器配置放在别处也一样。
 

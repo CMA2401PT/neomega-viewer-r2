@@ -18,10 +18,10 @@ type Choice struct {
 
 // Choices 的第一项是默认组合；找不到对应浏览器时按顺序尝试下一项。
 var Choices = []Choice{
-	{Key: "edge-gl", Name: "Edge + OpenGL", Browser: "edge", Angle: "gl"},
-	{Key: "edge-vulkan", Name: "Edge + Vulkan", Browser: "edge", Angle: "vulkan"},
 	{Key: "chrome-gl", Name: "Chrome + OpenGL", Browser: "chrome", Angle: "gl"},
 	{Key: "chrome-vulkan", Name: "Chrome + Vulkan", Browser: "chrome", Angle: "vulkan"},
+	{Key: "edge-gl", Name: "Edge + OpenGL", Browser: "edge", Angle: "gl"},
+	{Key: "edge-vulkan", Name: "Edge + Vulkan", Browser: "edge", Angle: "vulkan"},
 }
 
 // FindChoice 按 Key 查找组合。
@@ -39,28 +39,26 @@ func buttonLabel(i int) string {
 	return fmt.Sprintf("%d %s", i+1, Choices[i].Name)
 }
 
-// PrintChoices 在终端里画出一排按钮。interactive 为假时（输入不是控制台）只列出组合和对应参数。
+// PrintChoices 每个组合占一行，推荐说明放在按钮后，保持按钮点击列与 ASCII 字符位置一致。
 func PrintChoices(out io.Writer, colored, interactive bool) {
-	if !interactive {
-		fmt.Fprintln(out, "  打不开、黑屏、很卡或一直在编译时，可以换一种浏览器与图形后端，用 -open 参数指定：")
-		for _, choice := range Choices {
-			fmt.Fprintf(out, "    -open %-14s %s\n", choice.Key, choice.Name)
-		}
-		return
+	if interactive {
+		fmt.Fprintf(out, "  点击按钮或按数字键 1～%d 打开窗口：\n", len(Choices))
+	} else {
+		fmt.Fprintln(out, "  要在启动时打开窗口，可使用以下参数：")
 	}
-	fmt.Fprintln(out, "  打不开、黑屏、很卡或一直在编译时，点下面的按钮换一种浏览器与图形后端（也可以按数字键 1～3）：")
-	var row strings.Builder
-	row.WriteString("  ")
-	for i := range Choices {
-		if colored {
-			row.WriteString("\x1b[1;97;48;5;30m " + buttonLabel(i) + " \x1b[0m   ")
-		} else {
-			row.WriteString("[" + buttonLabel(i) + "]   ")
+	for i, choice := range Choices {
+		label := fmt.Sprintf("-browser -open %-14s %s", choice.Key, choice.Name)
+		if interactive {
+			label = "[" + buttonLabel(i) + "]"
+			if colored {
+				label = "\x1b[1;97;48;5;30m " + buttonLabel(i) + " \x1b[0m"
+			}
 		}
+		if choice.Key == "chrome-gl" {
+			label += "（推荐）"
+		}
+		fmt.Fprintln(out, "    "+label)
 	}
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, strings.TrimRight(row.String(), " "))
-	fmt.Fprintln(out)
 }
 
 // hitButton 判断在终端某一行的第 column 格点击时命中了哪个按钮；row 是这一行的文字。

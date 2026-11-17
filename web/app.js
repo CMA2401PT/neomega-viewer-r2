@@ -126,24 +126,25 @@ function useWorld(info, linked) {
  * @param {{id:number}} info
  */
 function localSource(info) {
-  const url = new URL(`/r2link?world=${info.id}`, location.href);
+  const url = new URL(`/r2link?world=${info.id}`, localServiceURL);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   const own = r2linkSource(url.href, {
     retry: 0,
     onState: (state, message) => {
       // 自己关闭时没有 message。
-      if (state === "closed" && message && source === own && !connecting) followServer(message);
+      if (state === "closed" && message && source === own && !connecting) followServer(own, message);
     },
   });
   return own;
 }
-/** @param {string} message */
-async function followServer(message) {
+/** @param {import("/r2/index.js").R2LinkSource} closed @param {string} message */
+async function followServer(closed, message) {
   try {
     const info = await (await fetch("/api/world")).json();
+    if (source !== closed || connecting) return;
     if (info.id > world.id) return await useWorld(info);
   } catch {}
-  hud.error(`世界连接已断开：${message}`);
+  if (source === closed && !connecting) hud.error(`世界连接已断开：${message}`);
 }
 /** 换世界时结束拍照，按新世界的开场位置摆放相机。 */
 async function installWorld(info, linked) {
@@ -665,6 +666,10 @@ if (settings.texturePath || settings.textureSize !== 128) {
   );
 }
 await startupStage("正在读取场景信息…");
+// Electron 页面使用固定来源，WebSocket 直连宿主本次启动的回环端口。
+const localServiceURL = location.protocol === "r2:"
+  ? await (await fetch("/desktop/service-url")).json()
+  : location.href;
 await useWorld(await (await fetch("/api/world")).json());
 await startupStage("正在加载场景，准备第一帧…");
 // 运行一阵后记下实际帧率与 GPU 时间，判断这种浏览器与图形后端组合是否够快。

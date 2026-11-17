@@ -88,15 +88,17 @@ func newSession(info Info, source worldSource) *session {
 
 // Server 串行切换来源，并限制区域读取的并发量。
 type Server struct {
-	Options  worldsource.Options
-	mu       sync.RWMutex
-	openMu   sync.Mutex
-	current  *session
-	builtin  *mobius.World
-	revision uint64
-	workers  chan struct{}
-	Effects  effector.Registry
-	Actors   blockactor.Registry
+	// DesktopHost 允许内置 Electron 页面连接本机世界。
+	DesktopHost bool
+	Options     worldsource.Options
+	mu          sync.RWMutex
+	openMu      sync.Mutex
+	current     *session
+	builtin     *mobius.World
+	revision    uint64
+	workers     chan struct{}
+	Effects     effector.Registry
+	Actors      blockactor.Registry
 }
 
 // New 接收应用启用的特效与方块实体处理器。
@@ -162,6 +164,9 @@ func (s *Server) Open(ctx context.Context, request OpenOptions) (Info, error) {
 
 // Info 让浏览器依据同一会话描述建立流式来源和开场取景。
 func (s *Server) Info() Info {
+	// 等待进行中的世界切换提交，旧连接断开时才能读到新世界。
+	s.openMu.Lock()
+	defer s.openMu.Unlock()
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.infoLocked()
@@ -301,7 +306,11 @@ func (s *Server) link(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "存档已经切换", 409)
 		return
 	}
-	conn, err := r2link.Accept(w, r, &websocket.AcceptOptions{})
+	options := &websocket.AcceptOptions{}
+	if s.DesktopHost {
+		options.OriginPatterns = []string{"r2://app"}
+	}
+	conn, err := r2link.Accept(w, r, options)
 	if err != nil {
 		return
 	}
