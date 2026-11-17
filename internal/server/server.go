@@ -10,9 +10,10 @@ import (
 	"neomega-converter-core/structure"
 	"neomega-converter-core/worldinput"
 	r2 "neomega-r2"
-	"neomega-r2/blockactor"
-	"neomega-r2/effector"
-	"neomega-r2/object"
+	"neomega-r2link"
+	"neomega-r2link/blockactor"
+	"neomega-r2link/effector"
+	"neomega-r2link/object"
 	"neomega-view-utils/r2assets"
 	"neomega-viewer-r2/internal/filebrowse"
 	"neomega-viewer-r2/internal/mobius"
@@ -21,7 +22,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
+
+	"github.com/coder/websocket"
 )
 
 // Info 描述当前可加载的来源；Loaded 同时适用于存档与内置场景。
@@ -35,7 +37,6 @@ type Info struct {
 	BedrockFix         bool          `json:"bedrockFix"`
 	StructureMemoryMiB int           `json:"structureMemoryMiB"`
 	StructureWorkers   int           `json:"structureWorkers"`
-	ClippedSections    int           `json:"clippedSections"`
 }
 
 // OpenOptions 让网页只覆盖用户填写的选项，其余使用服务启动时的默认值。
@@ -48,29 +49,41 @@ type OpenOptions struct {
 	Progress           func(structure.Progress) `json:"-"`
 }
 
-// worldSource 只要求会话真正读取的内容，使内置场景与存档共享缓存和 HTTP 路径。
+// worldSource 只要求会话真正读取的内容，使内置场景与存档共享缓存和 R2Link 路径。
 type worldSource interface {
-	Region(context.Context, int, int) ([]byte, error)
-	Chunks(context.Context) ([]byte, error)
+	Region(context.Context, int, int) (r2link.Region, error)
+	Chunks(context.Context) (r2link.ChunkIndex, error)
 	Objects(context.Context, int, int, [3]int, int, effector.Registry, blockactor.Registry) ([]object.Descriptor, error)
 	Close() error
 }
 
-// cacheEntry 将区域字节与 LRU 位置关联，限制每个会话的缓存容量。
+// cacheEntry 将区域与 LRU 位置关联，限制每个会话的缓存容量。
 type cacheEntry struct {
-	key  string
-	data []byte
+	key    [2]int
+	region r2link.Region
+	bytes  int
 }
 
-// session 隔离来源与缓存，切换后旧请求不能读取新场景。
+// session 隔离来源与缓存；切换世界时取消 ctx，连接到旧世界的浏览器随之断开。
 type session struct {
 	info   Info
 	source worldSource
+	ctx    context.Context
+	cancel context.CancelFunc
 	mu     sync.Mutex
-	cache  map[string]*list.Element
+	cache  map[[2]int]*list.Element
 	order  *list.List
 	bytes  int
-	chunks []byte
+	// 占用表单独加锁，扫描大存档时不阻塞区域缓存。
+	chunksMu sync.Mutex
+	chunks   r2link.ChunkIndex
+	scanned  bool
+}
+
+// newSession 建立带独立取消的会话。
+func newSession(info Info, source worldSource) *session {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &session{info: info, source: source, ctx: ctx, cancel: cancel, cache: map[[2]int]*list.Element{}, order: list.New()}
 }
 
 // Server 串行切换来源，并限制区域读取的并发量。
@@ -124,6 +137,8 @@ func (s *Server) Open(ctx context.Context, request OpenOptions) (Info, error) {
 		source.Close()
 		return Info{}, err
 	}
+	// 先断开旧世界的连接，让在途读取尽快结束，交换时不必久等。
+	s.current.cancel()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.revision++
@@ -138,7 +153,7 @@ func (s *Server) Open(ctx context.Context, request OpenOptions) (Info, error) {
 		StructureWorkers:   options.Structure.Workers,
 	}
 	old := s.current
-	s.current = &session{info: info, source: source, cache: map[string]*list.Element{}, order: list.New()}
+	s.current = newSession(info, source)
 	if old != nil {
 		old.source.Close()
 	}
@@ -160,9 +175,6 @@ func (s *Server) infoLocked() Info {
 		info.StructureMemoryMiB = s.Options.Structure.MemoryMiB
 		info.StructureWorkers = s.Options.Structure.Workers
 	}
-	if source, ok := s.current.source.(interface{ ClippedSections() int }); ok {
-		info.ClippedSections = source.ClippedSections()
-	}
 	return info
 }
 
@@ -170,6 +182,9 @@ func (s *Server) infoLocked() Info {
 func (s *Server) Close() {
 	s.openMu.Lock()
 	defer s.openMu.Unlock()
+	if s.current != nil {
+		s.current.cancel()
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.current != nil {
@@ -177,8 +192,8 @@ func (s *Server) Close() {
 	}
 	s.revision++
 	scene := mobius.Opening()
-	s.current = &session{
-		info: Info{
+	s.current = newSession(
+		Info{
 			ID:                 s.revision,
 			Loaded:             true,
 			Info:               worldinput.Info{Name: "Möbius", Position: scene.Camera.Position},
@@ -189,10 +204,8 @@ func (s *Server) Close() {
 			StructureWorkers:   s.Options.Structure.Workers,
 			Scene:              scene,
 		},
-		source: s.builtin,
-		cache:  map[string]*list.Element{},
-		order:  list.New(),
-	}
+		s.builtin,
+	)
 }
 func writeJSON(w http.ResponseWriter, value any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -269,133 +282,126 @@ func (s *Server) Handler(web fs.FS) http.Handler {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		textures.WriteTo(w)
 	})
-	mux.HandleFunc("GET /api/world/region", s.region)
-	mux.HandleFunc("GET /api/world/chunks", s.chunks)
-	mux.HandleFunc("GET /api/world/objects", s.objects)
+	mux.HandleFunc("GET /r2link", s.link)
 	mux.Handle("/", http.FileServerFS(web))
 	return mux
 }
 
-// read 保证一次构建只接触一个世界；等待中的旧代请求在取得工作名额后返回 409。
-func (s *Server) read(w http.ResponseWriter, r *http.Request, build func(*session) (any, error)) {
+// link 把当前世界作为 R2Link 数据源提供给同源页面；world 必须是当前会话编号，切换世界后旧连接被断开。
+func (s *Server) link(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(r.URL.Query().Get("world"), 10, 64)
 	if err != nil {
 		http.Error(w, err.Error(), 400)
 		return
 	}
-	select {
-	case s.workers <- struct{}{}:
-	case <-r.Context().Done():
-		return
-	}
-	defer func() { <-s.workers }()
-	start := time.Now()
 	s.mu.RLock()
-	if s.current == nil || s.current.info.ID != id {
-		s.mu.RUnlock()
+	current := s.current
+	s.mu.RUnlock()
+	if current.info.ID != id {
 		http.Error(w, "存档已经切换", 409)
 		return
 	}
-	w.Header().Set("Cache-Control", "no-store")
-	value, err := build(s.current)
-	if source, ok := s.current.source.(interface{ ClippedSections() int }); ok {
-		w.Header().Set("X-R2-Clipped-Sections", strconv.Itoa(source.ClippedSections()))
-	}
-	s.mu.RUnlock()
+	conn, err := r2link.Accept(w, r, &websocket.AcceptOptions{})
 	if err != nil {
-		http.Error(w, err.Error(), 500)
 		return
 	}
-	w.Header().Set("Server-Timing", fmt.Sprintf("read;dur=%.3f", float64(time.Since(start).Microseconds())/1000))
-	if data, ok := value.([]byte); ok {
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Write(data)
-	} else {
-		writeJSON(w, value)
-	}
-}
-
-// chunks 的会话缓存独立于区域 LRU，缩略地图在同一会话内只需扫描一次占用表。
-func (s *Server) chunks(w http.ResponseWriter, r *http.Request) {
-	s.read(w, r, func(current *session) (any, error) {
-		current.mu.Lock()
-		defer current.mu.Unlock()
-		if current.chunks == nil {
-			data, err := current.source.Chunks(r.Context())
-			if err != nil {
-				return nil, err
-			}
-			current.chunks = data
-		}
-		return current.chunks, nil
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	stop := context.AfterFunc(current.ctx, cancel)
+	defer stop()
+	r2link.Serve(ctx, conn, &linkSource{server: s, session: current}, r2link.Options{
+		Scene:   r2link.Scene{Name: current.info.Name},
+		Workers: cap(s.workers),
 	})
 }
 
-func (s *Server) region(w http.ResponseWriter, r *http.Request) {
-	x, err := queryInt(r, "x")
-	if err != nil {
-		http.Error(w, err.Error(), 400)
-		return
+// linkSource 从会话读取，所有连接共用读取名额；读取期间持有读锁，交换世界前等待它结束。
+type linkSource struct {
+	server  *Server
+	session *session
+}
+
+// read 取得读取名额并确认会话仍是当前世界。
+func (l *linkSource) read(ctx context.Context, build func() error) error {
+	s := l.server
+	select {
+	case s.workers <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	z, err := queryInt(r, "z")
-	if err != nil {
-		http.Error(w, err.Error(), 400)
-		return
+	defer func() { <-s.workers }()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current != l.session {
+		return fmt.Errorf("存档已经切换")
 	}
-	key := fmt.Sprintf("%d/%d", x, z)
-	s.read(w, r, func(current *session) (any, error) {
+	return build()
+}
+
+// Region 使用会话内的 LRU 缓存，同一区域重复订阅时不再读盘。
+func (l *linkSource) Region(ctx context.Context, x, z int) (region r2link.Region, err error) {
+	current, key := l.session, [2]int{x, z}
+	err = l.read(ctx, func() error {
 		current.mu.Lock()
-		element := current.cache[key]
-		if element != nil {
+		if element := current.cache[key]; element != nil {
 			current.order.MoveToFront(element)
-			data := element.Value.(cacheEntry).data
+			region = element.Value.(cacheEntry).region
 			current.mu.Unlock()
-			return data, nil
+			return nil
 		}
 		current.mu.Unlock()
-		data, err := current.source.Region(r.Context(), x, z)
+		region, err = current.source.Region(ctx, x, z)
 		if err != nil {
-			return nil, err
+			return err
+		}
+		size := 0
+		for _, section := range region.Sections {
+			size += 24 + 4*(len(section.Palette)+len(section.Words))
 		}
 		current.mu.Lock()
 		defer current.mu.Unlock()
 		if _, exists := current.cache[key]; !exists {
-			current.cache[key] = current.order.PushFront(cacheEntry{key: key, data: data})
-			current.bytes += len(data)
+			current.cache[key] = current.order.PushFront(cacheEntry{key: key, region: region, bytes: size})
+			current.bytes += size
 		}
 		for current.bytes > 64*1024*1024 && current.order.Len() > 1 {
 			tail := current.order.Back()
 			entry := tail.Value.(cacheEntry)
 			delete(current.cache, entry.key)
 			current.order.Remove(tail)
-			current.bytes -= len(entry.data)
+			current.bytes -= entry.bytes
 		}
-		return data, nil
+		return nil
 	})
+	return region, err
 }
-func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
-	values := map[string]int{}
-	for _, name := range []string{"x", "z", "cx", "cy", "cz", "radius"} {
-		value, err := queryInt(r, name)
-		if err != nil {
-			http.Error(w, err.Error(), 400)
-			return
-		}
-		values[name] = value
+
+// Objects 调用应用注册的特效与方块实体处理器。
+func (l *linkSource) Objects(ctx context.Context, x, z int, center [3]int, radius int) (objects []object.Descriptor, err error) {
+	if radius < 1 || radius > 16 {
+		return nil, fmt.Errorf("近景视距应为 1～16 区块")
 	}
-	if values["radius"] < 1 || values["radius"] > 16 {
-		http.Error(w, "近景视距应为 1～16 区块", 400)
-		return
-	}
-	s.read(w, r, func(current *session) (any, error) {
-		return current.source.Objects(
-			r.Context(),
-			values["x"],
-			values["z"],
-			[3]int{values["cx"], values["cy"], values["cz"]},
-			values["radius"],
-			s.Effects,
-			s.Actors,
-		)
+	err = l.read(ctx, func() error {
+		objects, err = l.session.source.Objects(ctx, x, z, center, radius, l.server.Effects, l.server.Actors)
+		return err
 	})
+	return objects, err
+}
+
+// Chunks 的会话缓存独立于区域 LRU，地图在同一会话内只需扫描一次占用表。
+func (l *linkSource) Chunks(ctx context.Context) (index r2link.ChunkIndex, err error) {
+	current := l.session
+	err = l.read(ctx, func() error {
+		current.chunksMu.Lock()
+		defer current.chunksMu.Unlock()
+		if !current.scanned {
+			if current.chunks, err = current.source.Chunks(ctx); err != nil {
+				return err
+			}
+			current.scanned = true
+		}
+		index = current.chunks
+		return nil
+	})
+	return index, err
 }

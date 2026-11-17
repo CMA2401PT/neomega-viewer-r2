@@ -9,7 +9,7 @@ import (
 	"neomega-blocks/ir"
 	"neomega-converter-core/worldinput"
 	nbt "neomega-nbt/presets/v1"
-	"neomega-viewer-r2/internal/worlddata"
+	"neomega-r2link"
 	"testing"
 )
 
@@ -46,12 +46,13 @@ func TestWorldPaletteTransport(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer world.Close()
-	data, err := world.Region(context.Background(), 0, 0)
+	region, err := world.Region(context.Background(), 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
+	data := r2link.EncodeRegion(region.Sections)
 	read := func(i int) uint32 { return binary.LittleEndian.Uint32(data[i*4:]) }
-	if read(0) != worlddata.RegionMagic || read(1) != 1 {
+	if read(0) != r2link.RegionMagic || read(1) != 1 {
 		t.Fatalf("传输头错误：%x %d", read(0), read(1))
 	}
 	bits, count := read(5), read(6)
@@ -63,11 +64,11 @@ func TestWorldPaletteTransport(t *testing.T) {
 		per := 32 / int(bits)
 		palette := (read(base+sample.index/per) >> uint(sample.index%per*int(bits))) & ((1 << bits) - 1)
 		got := read(8 + int(palette))
-		want := worlddata.Hash(sample.state)
+		want := r2link.BlockHash(sample.state)
 		if got != want {
 			t.Fatalf("索引 %d 得到 %d，期望 %d", sample.index, got, want)
 		}
-		if sample.index != 0 && got == worlddata.AirHash {
+		if sample.index != 0 && got == r2link.AirHash {
 			t.Fatalf("方块被丢弃：%s", sample.state)
 		}
 	}

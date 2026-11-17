@@ -48,9 +48,7 @@ go run ./apps/neomega-viewer-r2/cmd/viewer \
   -world '/path/to/城堡.schem' -structure-memory-mib 1024 -structure-workers 4
 ```
 
-渲染窗口固定为 Y `[-64,448)`。越界 section 不显示，但世界可以正常打开。场景信息显示“有 N 个 section 超出可显示高度”，按实际读取过的区块去重计数；重复下载不会重复累计。文件会话中的 `minY=-64`、`height=512` 描述这个窗口。
-
-Go 服务端只提供文件与内置场景。R2Link 数据源将改由浏览器通过 WebSocket 直接连接，作为另一种数据源接入核心的世界会话；这部分正在重写，期间 HUD 不提供连接入口。协议草案见 [R2Link 数据源说明](docs/r2link.md)。
+渲染窗口固定为 Y `[-64,448)`。越界 section 不显示，但世界可以正常打开。场景信息显示“有 N 个 section 超出可显示高度”，按当前窗口内已收到的区域计数，数字来自数据源随区域报告的 `clippedSections`。文件会话中的 `minY=-64`、`height=512` 描述这个窗口。
 
 拖动转向，WASD 按相机的水平朝向前后左右移动，抬头低头不改变移动高度。空格沿 Y 轴上升，Shift 沿 Y 轴下降。滚轮沿视线前后移动，按住 Shift 滚动时加大步长。点击底部 X、Y、Z 读数即可编辑，回车或箭头按钮跳转，Esc 或点到别处放弃编辑。存档名打开场景信息，齿轮打开设置，面板位于触发按钮上方。默认场景和存档均可飞行、使用地图和调整光照。设置保存在浏览器本地。
 
@@ -72,6 +70,17 @@ Go 服务端只提供文件与内置场景。R2Link 数据源将改由浏览器�
 
 有待加载内容时，屏幕上方显示近景对象准备与远景覆盖。完成后显示“已加载”，约 1.5 秒后淡出。场景信息提供存档路径、静态 section 数、区域数、累计传输、区域池用量、纹理分配和 GPU 时间。
 
+## 连接外部数据源
+
+游戏机器人、服务器插件或存档服务可以用 [R2Link](../../neomega-r2link/README.md) 提供世界。点击底部的链接按钮，填写数据源的 `ws://` 或 `wss://` 地址：浏览器直接连接数据源，握手成功后才关闭当前存档，连不上时当前世界不受影响。存档名旁的圆点表示连接状态：青色为已连接，橙色闪烁为断线重连。断线时保留最后画面，每 3 秒重试，数据源回来后重新发送全部内容。数据源可以移动相机、更新世界名。关闭按钮断开连接并回到 Möbius。
+
+[java-source](examples/java-source/main.go) 是最小的示例数据源，把 Java 存档按浏览器的订阅逐区域发送：
+
+```sh
+go run ./apps/neomega-viewer-r2/examples/java-source -world /path/to/world
+# 连接面板填写 ws://127.0.0.1:2414/r2link
+```
+
 ## 全屏地图
 
 底部地图图标把同一画布切换成正交俯视图。正交投影让所有主射线平行，地图上的同一距离不会因远近而缩放。地图沿用已加载的静态模型与核心射线求交，特殊对象隐藏，远景雾关闭。主相机的位置和朝向保持不变，静止时也能逐帧累积。
@@ -84,7 +93,7 @@ Go 服务端只提供文件与内置场景。R2Link 数据源将改由浏览器�
 
 画面在地面上的长边超过远景直径（远景半径 × 2 区块）的 √2 倍时，地图切换为区块占用图；阈值随远景半径调整。占用图以浅色表示来源中存在的区块，用来浏览整个场景的分布；点击某处会定位并放大回射线尺度。
 
-区块占用数据来自 `GET /api/world/chunks?world=<会话 id>`。每个网页会话请求一次并缓存，避免缩放时反复扫描区域文件。会话 id 与区域接口相同，旧会话请求返回 HTTP 409。Java 存档按覆盖 32×32 区块的 `.mca` 文件建立索引，Möbius 按同样的粒度登记环所在的区块；它们都与流式加载的 8×8 区块区域采用不同粒度。响应为连续的 136 字节记录：前八字节是小端 int32 的 32×32 区块区域坐标 rx、rz，余下 128 字节表示该区域的 32×32 区块。区块位序号为 `i=(cz&31)*32+(cx&31)`，第 `i>>3` 字节的第 `i&7` 位表示是否存在，低位在前。网页把每条记录变成 32×32 的离屏位图。可见范围内的区域位图先在同一张离屏画布中按区块坐标拼接，再整体按地图相机缩放旋转。采样使用最近邻，区域交界处不会因分别绘制的边缘抗锯齿而留下浅色接缝。
+区块占用表经 R2Link 的 `chunks` 请求取得，编码见 [占用表](../../neomega-r2link/README.md#占用表)。每个世界请求一次，外部数据源更新世界描述时重新请求；服务端对每个存档会话只扫描一次区域文件。Java 存档按覆盖 32×32 区块的 `.mca` 文件建立索引，Möbius 按同样的粒度登记环所在的区块；它们都与流式加载的 8×8 区块区域采用不同粒度。网页把每条记录变成 32×32 的离屏位图。可见范围内的区域位图先在同一张离屏画布中按区块坐标拼接，再整体按地图相机缩放旋转。采样使用最近邻，区域交界处不会因分别绘制的边缘抗锯齿而留下浅色接缝。
 
 ## 使用 Java 材质包
 
@@ -109,11 +118,13 @@ curl -X POST http://127.0.0.1:2412/api/textures \
 
 ## 为什么移动不必重新加载整个窗口
 
-网页从 `GET /api/world` 获取当前会话。`loaded: true` 表示存在可加载的来源，存档与内置场景都满足这一点。内置场景的 `name` 为 `Möbius`、`path` 为空，并额外携带 `scene`：`ocean` 是海面 Y 坐标，`camera` 包含 `position`、`yaw`、`pitch`，角度使用弧度，`time` 以小时表示开场时刻。顶层 `position` 与开场相机位置一致。存档响应省略 `scene`。`POST /api/world/open` 接收 `path`、`dimension`、`bedrockFix`、`structureMemoryMiB`、`structureWorkers`。默认返回 JSON 会话描述；请求头 `Accept: application/x-ndjson` 时逐行返回 `progress` 消息，最后返回 `world` 或 `error`。`POST /api/world/close` 返回 Möbius 会话描述，关闭会恢复内置场景；区域、对象与占用表接口共用会话编号，旧编号返回 HTTP 409。
+网页从 `GET /api/world` 获取当前会话。`loaded: true` 表示存在可加载的来源，存档与内置场景都满足这一点。内置场景的 `name` 为 `Möbius`、`path` 为空，并额外携带 `scene`：`ocean` 是海面 Y 坐标，`camera` 包含 `position`、`yaw`、`pitch`，角度使用弧度，`time` 以小时表示开场时刻。顶层 `position` 与开场相机位置一致。存档响应省略 `scene`。`POST /api/world/open` 接收 `path`、`dimension`、`bedrockFix`、`structureMemoryMiB`、`structureWorkers`。默认返回 JSON 会话描述；请求头 `Accept: application/x-ndjson` 时逐行返回 `progress` 消息，最后返回 `world` 或 `error`。`POST /api/world/close` 返回 Möbius 会话描述，关闭会恢复内置场景。
 
-区域接口读取和解压存档，仅把调色板条目换成方块哈希（渲染器按资源包的状态表解释），保留压缩格子索引，不生成模型、剔面或合并网格。一个区域包含 8×8 区块；服务端保留最多约 64 MiB 的区域响应缓存。Möbius 的方块和区域字节在首次读取时生成一次，之后各会话复用；它与存档共用二进制编码，对象列表为空。
+世界内容不走 HTTP 接口：服务端在 `GET /r2link?world=<会话 id>` 上把当前世界作为 [R2Link](../../neomega-r2link/README.md) 数据源提供给同源页面，网页用核心的 `r2linkSource` 连接它，和连接外部数据源是同一条路径。会话编号不是当前世界时返回 HTTP 409；打开或关闭世界会断开连到旧世界的页面，页面随即读取 `/api/world` 跟随新世界，别的页面打开的存档也因此同步。
 
-加载范围、后台准备与 GPU 发布由核心的世界会话（[WorldSession](../../neomega-r2/README.md#世界会话与数据源)）负责；本应用的 `web/source.js` 是它的 HTTP 数据源，按会话的订阅下载区域与近景对象。四路请求优先读取靠近相机的区域，不再需要的区域立即取消下载；后台线程登记跨格片段并生成空域掩码；主线程每帧发布一个完成的区域，未完成部分稍后补齐。移动时复用重叠区域，离开范围的区域撤销候选并回收地址。静态窗口周围保留一圈来源区域，保证边界模型完整。近景视距变化只更新特殊对象；对象候选没有变化的静态区域不重新准备，也不重新下载索引。
+服务端读取和解压存档，仅把调色板条目换成方块哈希（渲染器按资源包的状态表解释），保留压缩格子索引，不生成模型、剔面或合并网格。一个区域包含 8×8 区块；服务端为每个世界保留最多约 64 MiB 的区域缓存，所有连接共用 4 个读取名额。Möbius 的区域在首次读取时生成一次，之后各会话复用，没有特殊对象。
+
+加载范围、后台准备与 GPU 发布由核心的世界会话（[WorldSession](../../neomega-r2/README.md#世界会话与数据源)）负责。会话的订阅经 R2Link 交给服务端，服务端优先读取靠近相机的区域，不再需要的区域立即取消读取；后台线程登记跨格片段并生成空域掩码；主线程每帧发布一个完成的区域，未完成部分稍后补齐。移动时复用重叠区域，离开范围的区域撤销候选并回收地址。静态窗口周围保留一圈来源区域，保证边界模型完整。近景视距变化只更新特殊对象；对象候选没有变化的静态区域不重新准备，也不重新传输索引。
 
 来源、渲染与应用调度分为三个边界：
 
@@ -122,17 +133,17 @@ curl -X POST http://127.0.0.1:2412/api/textures \
 | `neomega-converter-core/worldinput/` | 两个 viewer 共用的路径识别、结构准备、维度扫描、原生只读句柄与读取关闭屏障。        |
 | `internal/worldsource/`              | 将原生来源接到 Java 区块；为 Bedrock 组合转换器和可选 fixer。                       |
 | `internal/mobius/`                   | 海晶灯莫比乌斯环、开场取景与只读场景缓存。                                          |
-| `internal/worlddata/`                | Java 区块的公共区域适配、近景对象、固定高度裁剪，以及内置场景共用的区域和地图编码。 |
-| `r2link/`                            | 数据源可复用的 WebSocket 消息、JSON 头和二进制索引编解码。                          |
-| `internal/server/`                   | 来源会话、区域缓存与 HTTP 接口。切换场景后拒绝旧会话请求。                          |
+| `internal/worlddata/`                | Java 区块变成 R2Link 区域与近景对象，固定高度裁剪。                                 |
+| `internal/server/`                   | 来源会话、区域缓存、HTTP 接口与 `/r2link` 数据源。切换世界后断开并拒绝旧会话。      |
+| `examples/java-source/`              | 最小的外部 R2Link 数据源。                                                          |
 | `internal/filebrowse/`               | 服务端文件浏览、各类来源识别与材质包选择。                                          |
-| `web/source.js`                      | 世界会话的 HTTP 数据源：按订阅排队下载区域与近景对象，取消不再需要的请求。          |
-| `web/app.js`                         | 会话、材质包与照片组装，同一绘制和累积循环。                                        |
+| `web/app.js`                         | 世界切换与外部连接、材质包与照片组装，同一绘制和累积循环。                          |
 | `web/hud.js`、`overlay.js`           | 坐标编辑、弹出面板、时间控件、坐标轴和临时读数。                                    |
 | `web/map.js`                         | 全屏地图相机、鼠标与触屏手势、拾取重试和区块占用叠加。                              |
 | `web/controls.js`、`movepad.js`      | 主相机飞行输入与触屏持续移动按钮。                                                  |
 | `web/picker.js`                      | 服务端存档和材质包目录选择。                                                        |
-| `neomega-r2`                         | 共享模型、世界会话、纯数据场景准备、GPU 目录与统一求交。                            |
+| `neomega-r2`                         | 共享模型、世界会话、R2Link 数据源、纯数据场景准备、GPU 目录与统一求交。             |
+| `neomega-r2link`                     | R2Link 协议、Go 数据源会话、effector 与 block actor。                               |
 
 本应用通过 converter 组合 neomega-view-utils 的 fixer。核心 neomega-r2 保持独立，只接收 Java 状态对应的静态模型编号。远景与近景使用同一份来源索引，但 NBT 外观与特效仅由近景对象接口处理。
 
@@ -153,8 +164,8 @@ npm --prefix neomega-r2 ci
 npm --prefix neomega-r2 run build
 npm --prefix neomega-r2 run check
 npm --prefix neomega-r2 test
-go vet ./neomega-r2/... ./apps/neomega-viewer-r2/...
-go test ./neomega-r2/... ./apps/neomega-viewer-r2/...
+go vet ./neomega-r2/... ./neomega-r2link/... ./apps/neomega-viewer-r2/...
+go test ./neomega-r2/... ./neomega-r2link/... ./apps/neomega-viewer-r2/...
 go run ./apps/neomega-viewer-r2/experiment/fixture -out /tmp/neomega-r2-java-fixture
 go run ./apps/neomega-viewer-r2/experiment/fixture -out /tmp/neomega-r2-static-fixture -static
 R2_URL=http://127.0.0.1:2413 node apps/neomega-viewer-r2/experiment/static-models.cjs

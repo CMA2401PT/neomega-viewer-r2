@@ -204,25 +204,28 @@ export class FullscreenMap {
       farRadius * 32 * Math.SQRT2
     );
   }
-  /** 每个会话仅获取一次目录位图；新会话替换整份索引。
-   * @param {{loaded:boolean,id?:number}} world
+  /** 每个世界向数据源请求一次占用表；新世界替换整份索引。
+   * @param {{loaded:boolean}} world
+   * @param {import("/r2/index.js").R2LinkSource} source
    */
-  async setWorld(world) {
+  async setWorld(world, source) {
     this.hide();
     this.world = world;
+    this.source = source;
     this.tiles = [];
     this.occupancy = null;
     return this.refreshChunks();
   }
-  /** 内容更新只替换占用表，地图中心和缩放保持原样。 */
+  /** 数据源换了场景时只替换占用表，地图中心和缩放保持原样。 */
   async refreshChunks() {
-    const world = this.world, request = this.chunksRequest = (this.chunksRequest || 0) + 1;
-    if (!world.loaded) return;
-    const response = await fetch(`/api/world/chunks?world=${world.id}`);
+    const world = this.world,
+      source = this.source,
+      request = (this.chunksRequest = (this.chunksRequest || 0) + 1);
+    if (!world.loaded || !source) return;
+    await source.welcome;
+    const buffer = await source.chunks();
     if (this.world !== world || request !== this.chunksRequest) return;
-    if (!response.ok) throw Error(await response.text());
-    const buffer = await response.arrayBuffer(),
-      data = new DataView(buffer),
+    const data = new DataView(buffer),
       tiles = [];
     for (let offset = 0; offset < buffer.byteLength; offset += 136) {
       const canvas = new OffscreenCanvas(32, 32),

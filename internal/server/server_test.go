@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -17,15 +18,16 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/coder/websocket"
 	"neomega-blocks/ir"
 	nbt "neomega-nbt/presets/v1"
-	"neomega-r2/blockactor"
-	"neomega-r2/effector"
-	"neomega-r2/object"
-	"neomega-viewer-r2/internal/worlddata"
+	"neomega-r2link"
+	"neomega-r2link/blockactor"
+	"neomega-r2link/effector"
+	"neomega-r2link/object"
 )
 
-// 测试处理器证明 NBT 会到达扩展入口，而远景请求完全不调用它。
+// 测试处理器证明 NBT 会到达扩展入口，而远景区域完全不调用它。
 type testActor struct {
 	calls int
 	text  string
@@ -73,6 +75,8 @@ func TestSessionAndNearObjectBoundary(t *testing.T) {
 	)
 	defer service.Close()
 	handler := service.Handler(fstest.MapFS{"index.html": {Data: []byte("场景页面")}})
+	server := httptest.NewServer(handler)
+	defer server.Close()
 	request := func(method, url, body string) *httptest.ResponseRecorder {
 		t.Helper()
 		response := httptest.NewRecorder()
@@ -98,10 +102,36 @@ func TestSessionAndNearObjectBoundary(t *testing.T) {
 	if !reflect.DeepEqual(service.Info(), info) {
 		t.Fatal("打开失败改变了当前会话")
 	}
-	regionURL := fmt.Sprintf("/api/world/region?world=%d&x=0&z=0", info.ID)
-	first := request("GET", regionURL, "")
-	second := request("GET", regionURL, "")
-	if first.Code != 200 || first.Body.String() != second.Body.String() {
+	client, welcome, err := dialWorld(t, server, info.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if welcome.Scene.Name != info.Name {
+		t.Fatalf("握手的世界名 %q", welcome.Scene.Name)
+	}
+	// 存档连接只接受同源页面。
+	foreign, _, err := websocket.Dial(context.Background(), fmt.Sprintf("ws%s/r2link?world=%d", strings.TrimPrefix(server.URL, "http"), info.ID), &websocket.DialOptions{
+		HTTPHeader: http.Header{"Origin": {"http://evil.example"}},
+	})
+	if err == nil {
+		foreign.CloseNow()
+		t.Fatal("接受了别的页面来源")
+	}
+	// 退订再订阅时命中缓存，内容不变。
+	region := func() []byte {
+		t.Helper()
+		var header r2link.RegionData
+		frame := client.receive(&header)
+		if header.Type != "region" || header.X != 0 || header.Z != 0 || len(frame.Tail) == 0 {
+			t.Fatalf("区域回复 %+v", header)
+		}
+		return frame.Tail
+	}
+	client.want([]r2link.RegionPos{{}}, nil, nil)
+	first := region()
+	client.want(nil, []r2link.RegionPos{{}}, nil)
+	client.want([]r2link.RegionPos{{}}, nil, nil)
+	if !bytes.Equal(first, region()) {
 		t.Fatal("区域缓存改变了数据")
 	}
 	textures := request("POST", "/api/textures", `{"path":"","maxSize":32}`)
@@ -133,28 +163,35 @@ func TestSessionAndNearObjectBoundary(t *testing.T) {
 	if actor.calls != 0 {
 		t.Fatal("远景调用了 NBT 外观处理器")
 	}
-	objectURL := fmt.Sprintf("/api/world/objects?world=%d&x=0&z=0&cx=0&cy=0&cz=0&radius=8", info.ID)
-	response := request("GET", objectURL, "")
-	var objects []object.Descriptor
-	if err = json.Unmarshal(response.Body.Bytes(), &objects); err != nil {
-		t.Fatal(err)
+	objects := func(center [3]int) []object.Descriptor {
+		t.Helper()
+		client.want(nil, nil, []r2link.ObjectWant{{Center: center, Radius: 8}})
+		var reply r2link.Objects
+		client.receive(&reply)
+		if reply.Type != "objects" || reply.X != 0 || reply.Z != 0 {
+			t.Fatalf("对象回复 %+v", reply)
+		}
+		return reply.Descriptors
 	}
-	if len(objects) != 2 || actor.calls != 1 || actor.text != "牌面内容" {
-		t.Fatalf("近景扩展失败：%+v %+v", objects, actor)
+	if near := objects([3]int{}); len(near) != 2 || actor.calls != 1 || actor.text != "牌面内容" {
+		t.Fatalf("近景扩展失败：%+v %+v", near, actor)
 	}
-	far := request("GET", strings.Replace(objectURL, "cx=0", "cx=100", 1), "")
-	if far.Code != 200 || strings.TrimSpace(far.Body.String()) != "[]" || actor.calls != 1 {
+	if far := objects([3]int{100, 0, 0}); len(far) != 0 || actor.calls != 1 {
 		t.Fatal("近景范围外仍生成了特殊对象")
 	}
+	// 关闭存档断开旧连接，旧编号不能再连接。
 	request("POST", "/api/world/close", "")
-	if request("GET", regionURL, "").Code != 409 {
-		t.Fatal("关闭后仍接受旧会话请求")
+	if frame, err := client.next(); err == nil {
+		t.Fatalf("关闭后连接仍在：%s", frame.Type)
+	}
+	if _, _, err = dialWorld(t, server, info.ID); err == nil {
+		t.Fatal("关闭后仍接受旧会话连接")
 	}
 	reopened, err := service.Open(context.Background(), OpenOptions{Path: path})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reopened.ID <= info.ID || request("GET", regionURL, "").Code != 409 {
+	if _, _, err = dialWorld(t, server, info.ID); reopened.ID <= info.ID || err == nil {
 		t.Fatal("重新打开后未拒绝旧会话")
 	}
 }
@@ -200,18 +237,13 @@ func TestWorldChunks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := service.Handler(fstest.MapFS{})
-	request := func(id uint64) *httptest.ResponseRecorder {
-		t.Helper()
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, httptest.NewRequest("GET", fmt.Sprintf("/api/world/chunks?world=%d", id), nil))
-		return response
+	server := httptest.NewServer(service.Handler(fstest.MapFS{}))
+	defer server.Close()
+	client, _, err := dialWorld(t, server, info.ID)
+	if err != nil {
+		t.Fatal(err)
 	}
-	first := request(info.ID)
-	if first.Code != 200 || first.Header().Get("Content-Type") != "application/octet-stream" {
-		t.Fatal(first.Code, first.Header(), first.Body.String())
-	}
-	data := first.Body.Bytes()
+	data := client.chunks()
 	if len(data) != 4*136 {
 		t.Fatalf("期望 4 条非空区域记录，得到 %d 字节", len(data))
 	}
@@ -242,30 +274,36 @@ func TestWorldChunks(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if cached := request(info.ID); cached.Code != 200 || !bytes.Equal(cached.Body.Bytes(), data) {
+	if !bytes.Equal(client.chunks(), data) {
 		t.Fatal("占用表未命中会话缓存")
 	}
 	reopened, err := service.Open(context.Background(), OpenOptions{Path: path})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if request(info.ID).Code != 409 {
-		t.Fatal("切换后仍接受旧会话的占用表请求")
+	if _, _, err = dialWorld(t, server, info.ID); err == nil {
+		t.Fatal("切换后仍接受旧会话的连接")
 	}
-	if empty := request(reopened.ID); empty.Code != 200 || empty.Body.Len() != 0 {
+	again, _, err := dialWorld(t, server, reopened.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty := again.chunks(); len(empty) != 0 {
 		t.Fatal("空存档的占用表应为零字节")
 	}
 	service.Close()
-	if request(reopened.ID).Code != 409 {
-		t.Fatal("关闭后仍接受占用表请求")
+	if _, _, err = dialWorld(t, server, reopened.ID); err == nil {
+		t.Fatal("关闭后仍接受旧会话的连接")
 	}
 }
 
-// 内置场景沿用区域协议与地图占用协议，关闭后只更换会话编号，不改变场景内容。
+// 内置场景与存档走同一条 R2Link 路径，关闭后只更换会话编号，不改变场景内容。
 func TestMobiusSession(t *testing.T) {
 	service := New(nil, nil)
 	defer service.Close()
 	handler := service.Handler(fstest.MapFS{})
+	server := httptest.NewServer(handler)
+	defer server.Close()
 	request := func(url string) *httptest.ResponseRecorder {
 		t.Helper()
 		response := httptest.NewRecorder()
@@ -286,8 +324,12 @@ func TestMobiusSession(t *testing.T) {
 	if info.Scene.Ocean != 64 || info.Scene.Camera.Position != info.Position || info.Scene.Time != 19 {
 		t.Fatalf("开场设置错误：%+v", info.Scene)
 	}
+	client, _, err := dialWorld(t, server, info.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	occupied := make(map[[2]int]bool)
-	chunks := request(fmt.Sprintf("/api/world/chunks?world=%d", info.ID)).Body.Bytes()
+	chunks := client.chunks()
 	if len(chunks) == 0 || len(chunks)%136 != 0 {
 		t.Fatal("场景占用表为空或记录不完整")
 	}
@@ -306,66 +348,62 @@ func TestMobiusSession(t *testing.T) {
 		}
 	}
 	lanterns := 0
-	for rx := -1; rx <= 0; rx++ {
-		for rz := -1; rz <= 0; rz++ {
-			data := request(fmt.Sprintf(
-				"/api/world/region?world=%d&x=%d&z=%d",
-				info.ID,
-				rx,
-				rz,
-			)).Body.Bytes()
-			words := make([]uint32, len(data)/4)
-			if err = binary.Read(bytes.NewReader(data), binary.LittleEndian, words); err != nil {
-				t.Fatal(err)
+	client.want([]r2link.RegionPos{{X: -1, Z: -1}, {X: -1, Z: 0}, {X: 0, Z: -1}, {X: 0, Z: 0}}, nil, nil)
+	for range 4 {
+		var header r2link.RegionData
+		data := client.receive(&header).Tail
+		if header.Type != "region" {
+			t.Fatalf("区域回复 %+v", header)
+		}
+		words := make([]uint32, len(data)/4)
+		if err = binary.Read(bytes.NewReader(data), binary.LittleEndian, words); err != nil {
+			t.Fatal(err)
+		}
+		if words[0] != r2link.RegionMagic || words[1] == 0 {
+			t.Fatalf("区域头错误：%v", words[:2])
+		}
+		cursor := 2
+		for range words[1] {
+			x, y, z := int(int32(words[cursor])), int(int32(words[cursor+1])), int(int32(words[cursor+2]))
+			bits, count, length := words[cursor+3], int(words[cursor+4]), int(words[cursor+5])
+			cursor += 6
+			// 现有调色板存储直接读取传输索引，验证编码与 X-Z-Y 格子顺序兼容。
+			storage := &layer_storage.Palette[uint32]{
+				Level:         bits,
+				IdxsPerUint32: 32 / bits,
+				Mask:          (1 << bits) - 1,
+				Palette:       words[cursor : cursor+count],
+				Data:          words[cursor+count : cursor+count+length],
 			}
-			if words[0] != worlddata.RegionMagic || words[1] == 0 {
-				t.Fatalf("区域头错误：%v", words[:2])
+			cursor += count + length
+			if !occupied[[2]int{x, z}] {
+				t.Fatalf("占用表未登记区域中的 section：%d %d %d", x, y, z)
 			}
-			cursor := 2
-			for range words[1] {
-				x, y, z := int(int32(words[cursor])), int(int32(words[cursor+1])), int(int32(words[cursor+2]))
-				bits, count, length := words[cursor+3], int(words[cursor+4]), int(words[cursor+5])
-				cursor += 6
-				// 现有调色板存储直接读取传输索引，验证编码与 X-Z-Y 格子顺序兼容。
-				storage := &layer_storage.Palette[uint32]{
-					Level:         bits,
-					IdxsPerUint32: 32 / bits,
-					Mask:          (1 << bits) - 1,
-					Palette:       words[cursor : cursor+count],
-					Data:          words[cursor+count : cursor+count+length],
-				}
-				cursor += count + length
-				if !occupied[[2]int{x, z}] {
-					t.Fatalf("占用表未登记区域中的 section：%d %d %d", x, y, z)
-				}
-				for bx := range 16 {
-					for bz := range 16 {
-						for by := range 16 {
-							model := storage.Get(layer_storage.At(bx, by, bz))
-							if model == worlddata.AirHash {
-								continue
-							}
-							if model != worlddata.Hash("minecraft:sea_lantern []") {
-								t.Fatalf("出现海晶灯之外的模型：%d", model)
-							}
-							lanterns++
+			for bx := range 16 {
+				for bz := range 16 {
+					for by := range 16 {
+						model := storage.Get(layer_storage.At(bx, by, bz))
+						if model == r2link.AirHash {
+							continue
 						}
+						if model != r2link.BlockHash("minecraft:sea_lantern []") {
+							t.Fatalf("出现海晶灯之外的模型：%d", model)
+						}
+						lanterns++
 					}
 				}
 			}
-			if cursor != len(words) {
-				t.Fatal("区域尾部有未解析数据")
-			}
+		}
+		if cursor != len(words) {
+			t.Fatal("区域尾部有未解析数据")
 		}
 	}
 	if lanterns < 1000 {
 		t.Fatalf("环没有完整生成：%d 格", lanterns)
 	}
-	objects := request(fmt.Sprintf(
-		"/api/world/objects?world=%d&x=0&z=0&cx=0&cy=4&cz=0&radius=8",
-		info.ID,
-	))
-	if strings.TrimSpace(objects.Body.String()) != "[]" {
+	client.want(nil, nil, []r2link.ObjectWant{{Center: [3]int{0, 4, 0}, Radius: 8}})
+	var objects r2link.Objects
+	if client.receive(&objects); objects.Type != "objects" || len(objects.Descriptors) != 0 {
 		t.Fatal("内置场景应只有静态方块")
 	}
 	service.Close()

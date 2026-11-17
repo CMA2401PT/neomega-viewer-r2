@@ -1,6 +1,6 @@
-// java-source 监听 R2Link，把 Java 存档按客户端的关注范围发送出去。
+// java-source 是最小的 R2Link 数据源：把一个 Java 存档按浏览器的订阅逐区域发送。
 // 在工作区根目录运行：go run ./apps/neomega-viewer-r2/examples/java-source -world /path/to/world
-// R2 连接 ws://127.0.0.1:2414/r2link。
+// 再在查看器的连接框填写 ws://127.0.0.1:2414/r2link。
 package main
 
 import (
@@ -16,226 +16,138 @@ import (
 
 	"celler"
 	"celler/java"
-	"github.com/coder/websocket"
+	"celler/layer_storage"
 	"neomega-converter-core/worldinput"
-	"neomega-viewer-r2/r2link"
+	"neomega-r2link"
 )
 
-// main 在 /r2link 上接受 WebSocket，文件句柄随每个连接独立关闭。
 func main() {
 	address := flag.String("listen", "127.0.0.1:2414", "数据源监听地址")
 	path := flag.String("world", "", "Java 世界目录或 .pack")
 	dimension := flag.String("dimension", "", "Java 维度目录")
-	resetEvery := flag.Duration("camera-every", 30*time.Second, "定时位置重置间隔，0 关闭")
+	cameraEvery := flag.Duration("camera-every", 0, "每隔多久把相机移回出生点，0 关闭")
 	flag.Parse()
-	ctx, stop := signal.NotifyContext(
-		context.Background(),
-		os.Interrupt,
-		syscall.SIGTERM,
-	)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	serve := func(conn *r2link.Conn) {
-		defer conn.Close()
-		stopClose := context.AfterFunc(ctx, func() { conn.Close() })
-		defer stopClose()
-		if err := sendWorld(
-			ctx,
-			conn,
-			*path,
-			*dimension,
-			*resetEvery,
-		); err != nil && ctx.Err() == nil {
-			log.Print(err)
-		}
+
+	input, err := worldinput.Open(ctx, worldinput.Options{Path: *path, Dimension: *dimension})
+	if err != nil {
+		log.Fatal(err)
 	}
+	defer input.Close()
+	if input.Java == nil {
+		log.Fatal("java-source 使用 Java 世界或 PackFS")
+	}
+	source := &javaSource{reader: input.Java}
+	spawn := r2link.Camera{Position: input.Info.Position}
+	options := r2link.Options{Scene: r2link.Scene{Name: input.Info.Name}, Camera: &spawn}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/r2link", func(w http.ResponseWriter, r *http.Request) {
-		conn, err := websocket.Accept(w, r, nil)
+		// nil：接受任何页面来源，查看器可以从别的地址连接过来。
+		conn, err := r2link.Accept(w, r, nil)
 		if err != nil {
 			return
 		}
-		serve(r2link.WebSocket(conn, 512<<20))
+		session := r2link.NewSession(conn, source, options)
+		if *cameraEvery > 0 {
+			go func() {
+				ticker := time.NewTicker(*cameraEvery)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-r.Context().Done():
+						return
+					case <-ticker.C:
+						if session.MoveCamera(r.Context(), spawn) != nil {
+							return
+						}
+					}
+				}
+			}()
+		}
+		if err := session.Run(r.Context()); err != nil && ctx.Err() == nil {
+			log.Print(err)
+		}
 	})
 	server := &http.Server{Addr: *address, Handler: mux}
 	context.AfterFunc(ctx, func() { server.Close() })
-	fmt.Printf("R2 数据源：ws://%s/r2link\n", *address)
+	fmt.Printf("R2Link 数据源：ws://%s/r2link\n", *address)
 	if err := server.ListenAndServe(); err != nil && ctx.Err() == nil {
 		log.Fatal(err)
 	}
 }
 
-// incoming 只保留一条待处理的 R2 消息，发送大世界时也能及时收到新范围。
-type incoming struct {
-	message r2link.Message
-	err     error
+// javaSource 实现 r2link.Source 与 r2link.ChunkSource；不提供近景对象。
+type javaSource struct {
+	reader *worldinput.JavaReader
 }
 
-// sendWorld 先 welcome，再等 ready 和 interest，之后补发范围内的区块。
-// 每条 chunk 的 replace 覆盖整根柱子；interest 矩形含两端，交集内容继续有效。
-// 控制消息由独立协程读取，主循环串行写入，避免两条 TCP 消息交错。
-func sendWorld(
-	ctx context.Context,
-	conn *r2link.Conn,
-	path, dimension string,
-	resetEvery time.Duration,
-) error {
-	hello, err := conn.Read(ctx)
-	if err != nil {
-		return err
-	}
-	if hello.Type != "hello" || hello.Version != 1 {
-		return fmt.Errorf("需要 R2Link v1 hello")
-	}
-	source, err := worldinput.Open(
-		ctx,
-		worldinput.Options{Path: path, Dimension: dimension},
-	)
-	if err != nil {
-		return err
-	}
-	defer source.Close()
-	if source.Java == nil {
-		return fmt.Errorf("java-source 使用 Java 世界或 PackFS")
-	}
-	positions, err := source.Java.Chunks(ctx)
-	if err != nil {
-		return err
-	}
-	camera := r2link.Camera{Position: source.Info.Position}
-	welcome := r2link.Message{
-		Type: "welcome", Protocol: "r2link", Version: 1, Blocks: "java", Delivery: "interest",
-		Scene: &r2link.Scene{
-			Name: source.Info.Name, Dimension: source.Info.Dimension,
-			MinY: -64, Height: 512,
-		},
-		Camera: &camera,
-	}
-	if err := conn.Write(ctx, welcome); err != nil {
-		return err
-	}
-	session, cancel := context.WithCancel(ctx)
-	messages := make(chan incoming)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for {
-			message, err := conn.Read(session)
-			select {
-			case messages <- incoming{message, err}:
-			case <-session.Done():
-				return
+// Region 读取区域内的 8×8 个区块，把每个 section 的方块状态换成哈希后打包。
+// 查看器只显示 Y -64～447，范围外的 section 计入 Clipped。
+func (s *javaSource) Region(ctx context.Context, rx, rz int) (r2link.Region, error) {
+	var region r2link.Region
+	for x := rx * 8; x < rx*8+8; x++ {
+		for z := rz * 8; z < rz*8+8; z++ {
+			chunk, err := s.read(ctx, celler.ChunkPos{X: int32(x), Z: int32(z)})
+			if err != nil || chunk == nil {
+				if err != nil {
+					return region, err
+				}
+				continue
 			}
+			ys, err := chunk.SectionYs()
 			if err != nil {
-				return
+				return region, err
 			}
-		}
-	}()
-	defer func() { cancel(); conn.Close(); <-done }()
-	var timer <-chan time.Time
-	if resetEvery > 0 {
-		ticker := time.NewTicker(resetEvery)
-		defer ticker.Stop()
-		timer = ticker.C
-	}
-	sent := map[celler.ChunkPos]bool{}
-	queue := []celler.ChunkPos{}
-	ready := false
-	// 非空队列启用 work 分支；空队列只等待消息和定时控制。
-	available := make(chan struct{})
-	close(available)
-	for {
-		var work <-chan struct{}
-		if len(queue) > 0 {
-			work = available
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case item := <-messages:
-			if item.err != nil {
-				return item.err
-			}
-			switch item.message.Type {
-			case "ready":
-				ready = true
-				clear(sent)
-				queue = nil
-			case "interest":
-				if !ready {
+			for _, y := range ys {
+				section, err := chunk.Section(y)
+				if err != nil {
+					return region, err
+				}
+				if section.Blocks == nil {
 					continue
 				}
-				for pos := range sent {
-					if !r2link.Contains(item.message.Ranges, pos.X, pos.Z) {
-						delete(sent, pos)
-					}
+				if y < -4 || y >= 28 {
+					region.Clipped++
+					continue
 				}
-				queue = nil
-				for _, pos := range positions {
-					if !sent[pos] && r2link.Contains(item.message.Ranges, pos.X, pos.Z) {
-						queue = append(queue, pos)
-					}
+				var blocks [4096]uint32
+				air := true
+				for i := range blocks {
+					blocks[i] = r2link.BlockHash(section.Blocks.Get(layer_storage.At(i>>8, i&15, (i>>4)&15)))
+					air = air && r2link.IsAir(blocks[i])
 				}
-			case "error":
-				return fmt.Errorf("R2：%s", item.message.Message)
-			}
-		case <-timer:
-			if ready {
-				if err := conn.Write(
-					ctx,
-					r2link.Message{Type: "camera.reset", Position: &camera.Position},
-				); err != nil {
-					return err
+				if !air {
+					region.Sections = append(region.Sections, r2link.Pack([3]int{x, int(y), z}, &blocks))
 				}
 			}
-		case <-work:
-			pos := queue[0]
-			queue = queue[1:]
-			message, err := readChunk(ctx, source.Java, pos)
-			if err != nil {
-				return err
-			}
-			if err := conn.Write(ctx, message); err != nil {
-				return err
-			}
-			sent[pos] = true
 		}
 	}
+	return region, ctx.Err()
 }
 
-// readChunk 只发送方块状态，实体和模型编号都不进入协议。
-func readChunk(
-	ctx context.Context,
-	reader *worldinput.JavaReader,
-	pos celler.ChunkPos,
-) (r2link.Message, error) {
-	message := r2link.Message{Type: "chunk", Mode: "replace", X: pos.X, Z: pos.Z}
-	records, err := reader.Read(ctx, pos)
+func (s *javaSource) read(ctx context.Context, pos celler.ChunkPos) (*java.Chunk, error) {
+	records, err := s.reader.Read(ctx, pos)
 	if err != nil || records[0] == nil {
-		return message, err
+		return nil, err
 	}
 	raw, err := records[0].Decode()
 	if err != nil {
-		return message, err
+		return nil, err
 	}
-	chunk, err := java.DecodeChunk(raw)
+	return java.DecodeChunk(raw)
+}
+
+// Chunks 给地图提供区块占用表。
+func (s *javaSource) Chunks(ctx context.Context) (r2link.ChunkIndex, error) {
+	positions, err := s.reader.Chunks(ctx)
 	if err != nil {
-		return message, err
+		return nil, err
 	}
-	ys, err := chunk.SectionYs()
-	if err != nil {
-		return message, err
+	index := r2link.ChunkIndex{}
+	for _, pos := range positions {
+		index.Add(int(pos.X), int(pos.Z))
 	}
-	for _, y := range ys {
-		section, err := chunk.Section(y)
-		if err != nil {
-			return message, err
-		}
-		if section.Blocks != nil {
-			message.Sections = append(
-				message.Sections,
-				r2link.Section{Y: y, Layers: []r2link.Layer{r2link.FromStorage(section.Blocks)}},
-			)
-		}
-	}
-	return message, nil
+	return index, nil
 }

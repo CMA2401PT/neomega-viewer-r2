@@ -8,10 +8,10 @@ import (
 	"sync"
 
 	"celler/layer_storage"
-	"neomega-r2/blockactor"
-	"neomega-r2/effector"
-	"neomega-r2/object"
-	"neomega-viewer-r2/internal/worlddata"
+	"neomega-r2link"
+	"neomega-r2link/blockactor"
+	"neomega-r2link/effector"
+	"neomega-r2link/object"
 )
 
 const (
@@ -54,18 +54,17 @@ type World struct {
 	data func() sceneData
 }
 
-// sceneData 保存已编码的区域，让空区域请求也沿用正常传输格式。
+// sceneData 保存按区域分好的 section 与占用表。
 type sceneData struct {
-	regions map[[2]int][]byte
-	chunks  []byte
-	empty   []byte
+	regions map[[2]int]r2link.Region
+	chunks  r2link.ChunkIndex
 }
 
 // New 将几何与编码延迟到首次请求，关闭后仍可复用。
 func New() *World {
 	return &World{data: sync.OnceValue(func() sceneData {
 		sections := make(map[[3]int]*layer_storage.Palette[uint32])
-		paintMobiusRing(sections, worlddata.Hash("minecraft:sea_lantern []"))
+		paintMobiusRing(sections, r2link.BlockHash("minecraft:sea_lantern []"))
 		positions := make([][3]int, 0, len(sections))
 		for position := range sections {
 			positions = append(positions, position)
@@ -78,42 +77,31 @@ func New() *World {
 			}
 			return 0
 		})
-		regions := make(map[[2]int][]worlddata.Section)
-		index := make(worlddata.ChunkIndex)
+		data := sceneData{regions: map[[2]int]r2link.Region{}, chunks: r2link.ChunkIndex{}}
 		for _, position := range positions {
 			blocks := sections[position]
-			region := [2]int{position[0] >> 3, position[2] >> 3}
-			regions[region] = append(regions[region], worlddata.Section{
+			key := [2]int{position[0] >> 3, position[2] >> 3}
+			region := data.regions[key]
+			region.Sections = append(region.Sections, r2link.Section{
 				Position: position,
 				Bits:     blocks.Level,
 				Palette:  blocks.GetUsedPalette(),
 				Words:    blocks.Data,
 			})
-			index.Add(position[0], position[2])
-		}
-		data := sceneData{
-			regions: make(map[[2]int][]byte),
-			chunks:  index.Encode(),
-			empty:   worlddata.EncodeRegion(nil),
-		}
-		for position, sections := range regions {
-			data.regions[position] = worlddata.EncodeRegion(sections)
+			data.regions[key] = region
+			data.chunks.Add(position[0], position[2])
 		}
 		return data
 	})}
 }
 
-// Region 与存档共用压缩索引编码，浏览器无需识别来源类型。
-func (w *World) Region(_ context.Context, x, z int) ([]byte, error) {
-	data := w.data()
-	if region, ok := data.regions[[2]int{x, z}]; ok {
-		return region, nil
-	}
-	return data.empty, nil
+// Region 与存档共用区域格式，浏览器无需识别来源类型。
+func (w *World) Region(_ context.Context, x, z int) (r2link.Region, error) {
+	return w.data().regions[[2]int{x, z}], nil
 }
 
 // Chunks 只登记环实际占据的区块，海面由渲染器独立绘制。
-func (w *World) Chunks(_ context.Context) ([]byte, error) {
+func (w *World) Chunks(_ context.Context) (r2link.ChunkIndex, error) {
 	return w.data().chunks, nil
 }
 
@@ -151,7 +139,7 @@ func paintMobiusRing(sections map[[3]int]*layer_storage.Palette[uint32], lantern
 				position := [3]int{x >> 4, y >> 4, z >> 4}
 				blocks := sections[position]
 				if blocks == nil {
-					blocks = layer_storage.MakePaletteStorage(worlddata.AirHash)
+					blocks = layer_storage.MakePaletteStorage(r2link.AirHash)
 					sections[position] = blocks
 				}
 				blocks.Set(layer_storage.At(x&15, y&15, z&15), lantern)

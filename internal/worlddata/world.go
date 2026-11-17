@@ -1,103 +1,73 @@
+// Package worlddata 把存档读出的 Java 区块变成 R2Link 的区域与近景对象。
 package worlddata
 
 import (
 	"context"
 	"maps"
 	"slices"
-	"sync"
 
 	"celler"
 	converter "neomega-converter-core"
+	"neomega-r2link"
 )
 
 // World 将不同来源的 Java 区块变成同一种区域，保持压缩索引和近景对象共用状态。
 type World struct {
-	HeightDiagnostics bool
-	ReadChunk         func(context.Context, celler.ChunkPos) (*converter.JavaChunk, error)
-	ScanChunks        func(context.Context) ([]celler.ChunkPos, error)
-	mu                sync.Mutex
-	clipped           map[celler.ChunkPos]int
+	ReadChunk  func(context.Context, celler.ChunkPos) (*converter.JavaChunk, error)
+	ScanChunks func(context.Context) ([]celler.ChunkPos, error)
 }
 
-// chunk 按区块替换诊断计数，使重复下载和近景读取不会重复累计超高 section。
-func (w *World) chunk(ctx context.Context, x, z int) (*converter.JavaChunk, error) {
-	pos := celler.ChunkPos{X: int32(x), Z: int32(z)}
-	chunk, err := w.ReadChunk(ctx, pos)
-	if err != nil || chunk == nil {
-		return chunk, err
-	}
-	count := 0
-	for y, section := range chunk.Sections {
-		if (y < -4 || y >= 28) && section.Blocks != nil {
-			count++
-		}
-	}
-	if count > 0 && w.HeightDiagnostics {
-		w.mu.Lock()
-		if w.clipped == nil {
-			w.clipped = make(map[celler.ChunkPos]int)
-		}
-		w.clipped[pos] = count
-		w.mu.Unlock()
-	}
-	return chunk, nil
-}
-
-// ClippedSections 汇总已经读取的区块，避免为了诊断预先解码整个世界。
-func (w *World) ClippedSections() int {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	count := 0
-	for _, n := range w.clipped {
-		count += n
-	}
-	return count
-}
+// visible 是可显示的 section 高度：Y -64～447。
+func visible(y int32) bool { return y >= -4 && y < 28 }
 
 // Chunks 复用原生来源的坐标扫描，地图占用表与区域下载使用同一维度。
-func (w *World) Chunks(ctx context.Context) ([]byte, error) {
+func (w *World) Chunks(ctx context.Context) (r2link.ChunkIndex, error) {
 	positions, err := w.ScanChunks(ctx)
 	if err != nil {
 		return nil, err
 	}
-	index := make(ChunkIndex)
+	index := r2link.ChunkIndex{}
 	for _, pos := range positions {
 		index.Add(int(pos.X), int(pos.Z))
 	}
-	return index.Encode(), nil
+	return index, nil
 }
 
-// Region 把调色板条目换成方块哈希，窗口之外的小节计入诊断而不进入固定高度的 GPU 目录。
-func (w *World) Region(ctx context.Context, rx, rz int) ([]byte, error) {
-	var sections []Section
+// Region 把调色板条目换成方块哈希；可显示高度之外的 section 只计数，全是空气的 section 省略。
+func (w *World) Region(ctx context.Context, rx, rz int) (r2link.Region, error) {
+	var region r2link.Region
 	for x := rx * 8; x < (rx+1)*8; x++ {
 		for z := rz * 8; z < (rz+1)*8; z++ {
 			if err := ctx.Err(); err != nil {
-				return nil, err
+				return region, err
 			}
-			chunk, err := w.chunk(ctx, x, z)
+			chunk, err := w.ReadChunk(ctx, celler.ChunkPos{X: int32(x), Z: int32(z)})
 			if err != nil {
-				return nil, err
+				return region, err
 			}
 			if chunk == nil {
 				continue
 			}
 			for _, y := range slices.Sorted(maps.Keys(chunk.Sections)) {
 				section := chunk.Sections[y]
-				if y < -4 || y >= 28 || section.Blocks == nil {
+				if section.Blocks == nil {
+					continue
+				}
+				if !visible(y) {
+					region.Clipped++
 					continue
 				}
 				palette := section.Blocks.GetUsedPalette()
 				mapped := make([]uint32, len(palette))
 				nonAir := false
 				for i, state := range palette {
-					mapped[i] = Hash(state)
-					nonAir = nonAir || !airHashes[mapped[i]]
+					mapped[i] = r2link.BlockHash(state)
+					nonAir = nonAir || !r2link.IsAir(mapped[i])
 				}
 				if !nonAir {
 					continue
 				}
-				sections = append(sections, Section{
+				region.Sections = append(region.Sections, r2link.Section{
 					Position: [3]int{x, int(y), z},
 					Bits:     section.Blocks.Level,
 					Palette:  mapped,
@@ -106,5 +76,5 @@ func (w *World) Region(ctx context.Context, rx, rz int) ([]byte, error) {
 			}
 		}
 	}
-	return EncodeRegion(sections), nil
+	return region, nil
 }

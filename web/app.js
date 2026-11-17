@@ -1,6 +1,5 @@
 // 应用组装存档会话、飞行/地图视图与同一射线帧循环；UI 事件和投影分别放在独立模块。
-import { decodeTextures, createRenderer, ObjectRegistry, enchantingBook, WorldSession } from "/r2/index.js";
-import { httpSource } from "./source.js";
+import { decodeTextures, createRenderer, ObjectRegistry, enchantingBook, WorldSession, r2linkSource } from "/r2/index.js";
 import { FlightControls } from "./controls.js";
 import { bindMovePad } from "./movepad.js";
 import { createPicker } from "./picker.js";
@@ -53,8 +52,10 @@ let renderer,
   map,
   /** 当前世界的会话与数据源。 @type {WorldSession|null} */
   session = null,
-  /** @type {ReturnType<typeof httpSource>|null} */
+  /** @type {import("/r2/index.js").R2LinkSource|null} */
   source = null,
+  // 正在换成外部数据源：这期间本机世界的断开是预期的，不跟随服务端。
+  connecting = false,
   // 最近一帧的视图（主相机或地图俯视），拍照与导出都拍这个画面。
   currentView = null,
   // 画面实际使用的预览档；选中的档还在编译时沿用上一档。
@@ -108,38 +109,69 @@ function sunDirection(hours) {
   const angle = ((hours - 6) / 24) * 2 * Math.PI;
   return [Math.cos(angle), Math.sin(angle), 0.3];
 }
-/** 所有会话共用流式路径，内置场景额外提供开场取景与时间。
- * @param {{loaded:boolean,id:number,name:string,path:string,position:number[],scene?:{ocean:number,camera:{position:number[],yaw:number,pitch:number},time:number}}} info
+/** 所有世界都经 R2Link 读取：本机存档与内置场景连接同源的 /r2link，外部数据源连接用户给的地址。
+ * 内置场景额外提供开场取景与时间；外部数据源带 connection 与握手给出的相机。
+ * @param {{loaded:boolean,id:number,name:string,path?:string,position:number[],scene?:{ocean:number,camera:{position:number[],yaw:number,pitch:number},time:number},camera?:{position:number[],yaw?:number,pitch?:number},connection?:{url:string,state:string,message:string}}} info
  */
 let worldQueue = Promise.resolve();
-/** 打开、关闭与启动共用切换队列，同一世界只初始化一次。 */
-function useWorld(info) {
-  const job = worldQueue.then(() => installWorld(info));
+/** 打开、关闭、连接与启动共用切换队列；编号不比当前世界新的切换被忽略。
+ * @param {Object} info @param {import("/r2/index.js").R2LinkSource} [linked] 外部数据源
+ */
+function useWorld(info, linked) {
+  const job = worldQueue.then(() => installWorld(info, linked));
   worldQueue = job.catch(() => {});
   return job;
 }
+/** 本机世界的数据源。服务端切换或关闭世界时断开旧连接，这时改用服务端的当前世界（可能由别的页面打开）。
+ * @param {{id:number}} info
+ */
+function localSource(info) {
+  const url = new URL(`/r2link?world=${info.id}`, location.href);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  const own = r2linkSource(url.href, {
+    retry: 0,
+    onState: (state, message) => {
+      // 自己关闭时没有 message。
+      if (state === "closed" && message && source === own && !connecting) followServer(message);
+    },
+  });
+  return own;
+}
+/** @param {string} message */
+async function followServer(message) {
+  try {
+    const info = await (await fetch("/api/world")).json();
+    if (info.id > world.id) return await useWorld(info);
+  } catch {}
+  hud.error(`世界连接已断开：${message}`);
+}
 /** 换世界时结束拍照，按新世界的开场位置摆放相机。 */
-async function installWorld(info) {
+async function installWorld(info, linked) {
   if (world.id === info.id) { world = info; return; }
-  if (world.id > info.id) return;
+  if (world.id > info.id) return linked?.close();
   await cancelPhoto();
   // 离开开场场景或直接载入外部来源时从白天开始；来源之间切换保留当前时间。
   const startDaytime = !info.scene && (!world.loaded || !!world.scene);
-  session?.dispose();
+  const old = session;
   session = source = null;
+  old?.dispose();
   world = info;
   closePopovers();
   hud.world(info);
-  map.setWorld(info).catch((error) => hud.error(String(error)));
-  camera.position = [...(info.scene?.camera.position || info.position)];
-  camera.yaw = info.scene?.camera.yaw ?? -0.7;
-  camera.pitch = info.scene?.camera.pitch ?? -0.32;
+  hud.connection(info.connection);
+  const current = (source = linked || localSource(info));
+  map.setWorld(info, current).catch((error) => {
+    if (source === current && current.state === "connected") hud.error(String(error));
+  });
+  const start = info.scene?.camera || info.camera;
+  camera.position = [...(start?.position || info.position)];
+  camera.yaw = start?.yaw ?? -0.7;
+  camera.pitch = start?.pitch ?? -0.32;
   if (info.scene || startDaytime) {
     settings.time = info.scene?.time ?? 10;
     hud.settings();
   }
-  source = httpSource(info.id);
-  session = new WorldSession(renderer, source, {
+  session = new WorldSession(renderer, current, {
     registry,
     onError: (message) => hud.error(message),
   });
@@ -218,6 +250,78 @@ element("world-dimension").onchange = async (event) => {
   } catch (error) { select.value = world.dimension; hud.error(String(error)); }
   finally { select.disabled = false; }
 };
+/** 先连上外部数据源，握手成功后才关闭当前存档并换成它；连不上时当前世界不受影响。
+ * @param {string} url ws:// 或 wss:// 地址
+ */
+async function connectSource(url) {
+  const connection = { url, state: "connecting", message: "" };
+  /** @type {import("/r2/index.js").R2LinkSource|undefined} */
+  let linked;
+  try {
+    linked = r2linkSource(url, {
+      onState: (state, message) => {
+        connection.state = state;
+        connection.message = message || "";
+        if (source === linked) hud.connection(connection);
+      },
+      onScene: (scene) => {
+        if (source !== linked) return;
+        world.name = scene.name;
+        hud.world(world);
+        hud.connection(connection);
+        map.refreshChunks().catch(() => {});
+      },
+      onCamera: (next) => {
+        if (source !== linked) return;
+        camera.position = [...next.position];
+        if (next.yaw != null) camera.yaw = next.yaw;
+        if (next.pitch != null) camera.pitch = next.pitch;
+      },
+    });
+    const { scene, camera: start } = await linked.welcome;
+    connecting = true;
+    const response = await fetch("/api/world/close", { method: "POST" });
+    if (!response.ok) throw Error(await response.text());
+    const closed = await response.json();
+    localStorage.setItem("neomega-r2-link", url);
+    // 编号排在关闭得到的 Möbius 之后、下一次打开之前，晚到的旧世界切换因此被忽略。
+    await useWorld({
+      loaded: true,
+      id: closed.id + 0.5,
+      name: scene.name,
+      kind: "R2Link",
+      position: start?.position || [0, 80, 0],
+      camera: start,
+      connection,
+    }, linked);
+  } catch (error) {
+    linked?.close();
+    throw error;
+  } finally {
+    connecting = false;
+  }
+}
+element("connect-source").onclick = () => {
+  closePopovers();
+  element("link-url").value =
+    world.connection?.url || localStorage.getItem("neomega-r2-link") || "ws://127.0.0.1:2414/r2link";
+  element("link-message").textContent = "";
+  element("link-dialog").showModal();
+};
+element("link-start").onclick = async () => {
+  const button = element("link-start");
+  button.disabled = true;
+  element("link-message").textContent = "正在连接…";
+  try {
+    await connectSource(element("link-url").value.trim());
+    element("link-dialog").close();
+  } catch (error) {
+    element("link-message").textContent = String(error.message || error);
+  } finally {
+    button.disabled = false;
+  }
+};
+// 关闭存档或断开外部数据源，都回到 Möbius。
 element("close-world").onclick = async () => {
   const response = await fetch("/api/world/close", { method: "POST" });
   if (!response.ok) return hud.error(await response.text());
@@ -524,10 +628,10 @@ function frame(now) {
       const stats = session.stats,
         times = renderer.times.sort((a, b) => a - b),
         median = times[Math.floor(times.length / 2)];
-      hud.loading(stats);
-      const clipped = Math.max(world.clippedSections || 0, source.clippedSections);
+      hud.loading(stats, world.connection);
+      const clipped = source.clippedSections;
       element("height-diagnostics").hidden = clipped === 0;
-      element("height-diagnostics").textContent = `有 ${clipped} 个 section 超出可显示高度（Y -64～447，按已读取区块统计）`;
+      element("height-diagnostics").textContent = `有 ${clipped} 个 section 超出可显示高度（Y -64～447，按已收到的区域统计）`;
       hud.details([
         ["来源", world.kind || "内置场景"],
         ["预览渲染器", TIER_NAMES[shownTier]],
@@ -615,6 +719,7 @@ globalThis.viewerR2 = {
     continuous = value;
   },
   openWorld,
+  connectSource,
   applyTextures,
   close: () => element("close-world").click(),
   get renderer() {
@@ -622,6 +727,9 @@ globalThis.viewerR2 = {
   },
   get session() {
     return session;
+  },
+  get source() {
+    return source;
   },
   get map() {
     return map;

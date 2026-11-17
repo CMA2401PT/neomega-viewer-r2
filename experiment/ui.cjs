@@ -33,8 +33,15 @@ fs.mkdirSync(out + "/shots", { recursive: true });
         if (/GL_INVALID|WebGL:.*INVALID/.test(message.text()))
           result.errors.push(message.text());
       });
-      const requests = [];
-      page.on("request", (request) => requests.push(request.url()));
+      // 世界内容经 R2Link 到达：按类型统计收到与发出的消息。
+      const frames = { sent: [], received: [] };
+      page.on("websocket", (ws) => {
+        const type = (payload) =>
+          typeof payload === "string" ? "" : JSON.parse(payload.subarray(4, 4 + payload.readUInt32LE(0))).type;
+        ws.on("framesent", ({ payload }) => frames.sent.push(type(payload)));
+        ws.on("framereceived", ({ payload }) => frames.received.push(type(payload)));
+      });
+      const count = (list, type) => list.filter((t) => t === type).length;
       await page.request.post(base + "/api/world/close");
       await page.goto(base);
       await page.waitForFunction(
@@ -260,7 +267,7 @@ fs.mkdirSync(out + "/shots", { recursive: true });
       assert(await page.evaluate(() => viewerR2.state.map.overview));
       assert((await page.evaluate(() => viewerR2.state.map.tiles)) > 0);
       assert.equal(
-        requests.filter((url) => url.includes("/api/world/chunks?")).length,
+        count(frames.sent, "chunks"),
         width === 1280 ? 3 : 2,
       );
       await page.mouse.click(width / 2, height / 2);

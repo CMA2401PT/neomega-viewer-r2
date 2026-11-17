@@ -69,9 +69,18 @@ fs.mkdirSync(out, { recursive: true });
       await page.waitForFunction(() => viewerR2.renderer.accumulated >= 8);
       const decoded = await page.evaluate(async () => {
         const { decodeRegion, unpack } = await import("/r2/scene/prepare.js");
+        const { r2linkSource } = await import("/r2/index.js");
         const { world } = viewerR2.state;
-        const response = await fetch(`/api/world/region?world=${world.id}&x=0&z=0`);
-        const region = decodeRegion(await response.arrayBuffer(), viewerR2.renderer.states);
+        // 另开一条 R2Link 连接，只订阅区域 (0, 0)。
+        const url = new URL(`/r2link?world=${world.id}`, location.href);
+        url.protocol = "ws:";
+        const source = r2linkSource(url.href);
+        const data = await new Promise((resolve, reject) => {
+          source.open({ region: (x, z, data) => resolve(data), objects() {}, error: (x, z, error) => reject(error) });
+          source.want({ center: [64, 64], regions: { add: [{ x: 0, z: 0 }], remove: [] }, objects: { add: [], remove: [] } });
+        });
+        source.close();
+        const region = decodeRegion(data, viewerR2.renderer.states);
         // 场景只有海晶灯一种方块：解码后除空气外只有一个模型。
         const models = new Set(region.sections.flatMap((section) => [...unpack(section)]));
         models.delete(0);

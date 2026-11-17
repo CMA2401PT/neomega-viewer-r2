@@ -35,7 +35,7 @@ func Open(ctx context.Context, options Options) (*World, error) {
 	if err != nil {
 		return nil, err
 	}
-	output := &worlddata.World{HeightDiagnostics: true}
+	output := &worlddata.World{}
 	if input.Java != nil {
 		output.ScanChunks = input.Java.Chunks
 		output.ReadChunk = func(ctx context.Context, pos celler.ChunkPos) (*converter.JavaChunk, error) {

@@ -95,6 +95,9 @@
         <path class="fill" d="M4 4h12v16H4Z" />
         <path d="M10 12h11m-3-3 3 3-3 3" />
       </symbol>
+      <symbol id="i-link" viewBox="0 0 24 24">
+        <path d="m9 15 6-6M8 13l-1 1a3.5 3.5 0 0 0 5 5l3-3a3.5 3.5 0 0 0 0-5M16 11l1-1a3.5 3.5 0 0 0-5-5L9 8a3.5 3.5 0 0 0 0 5" />
+      </symbol>
       <symbol id="i-close" viewBox="0 0 24 24">
         <path d="m6 6 12 12M6 18 18 6" />
       </symbol>
@@ -262,7 +265,7 @@
       </form>
       <i class="divider"></i
       ><button id="world-name" popovertarget="info" title="场景信息">
-        <span id="world-label">未打开存档</span></button
+        <span id="world-label">未打开存档</span><span id="link-state" role="img" hidden></span></button
       ><button
         id="open-world"
         class="icon-button"
@@ -270,6 +273,8 @@
         aria-label="打开存档"
       >
         <svg><use href="#i-folder" /></svg></button
+      ><button id="connect-source" class="icon-button" title="连接数据源" aria-label="连接数据源">
+        <svg><use href="#i-link" /></svg></button
       ><button
         id="close-world"
         class="icon-button"
@@ -393,6 +398,17 @@
       <p id="height-diagnostics" class="hint" hidden></p>
       <dl id="details"></dl>
     </section>
+    <dialog id="link-dialog" class="panel">
+      <form method="dialog" class="picker-title">
+        <h2>连接数据源</h2>
+        <button id="link-dismiss" class="icon-button" title="关闭连接面板" aria-label="关闭连接面板">
+          <svg><use href="#i-close" /></svg>
+        </button>
+      </form>
+      <p class="hint">游戏机器人、服务器插件或存档服务提供的 R2Link 地址。连接成功后关闭当前存档。</p>
+      <label class="row">地址<input id="link-url" placeholder="ws://host:port/r2link" /></label>
+      <div class="row bottom"><output id="link-message"></output><button id="link-start">连接</button></div>
+    </dialog>
     <dialog id="files" class="panel">
       <form method="dialog" class="picker-title">
         <h2>打开存档或结构</h2>

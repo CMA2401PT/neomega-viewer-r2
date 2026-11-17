@@ -26,6 +26,15 @@ fs.mkdirSync(out, { recursive: true });
     });
     const requests = [];
     page.on("request", (r) => requests.push(r.url()));
+    // 世界内容经 R2Link 到达：按类型统计收到与发出的消息。
+    const frames = { sent: [], received: [] };
+    page.on("websocket", (ws) => {
+      const type = (payload) =>
+        typeof payload === "string" ? "" : JSON.parse(payload.subarray(4, 4 + payload.readUInt32LE(0))).type;
+      ws.on("framesent", ({ payload }) => frames.sent.push(type(payload)));
+      ws.on("framereceived", ({ payload }) => frames.received.push(type(payload)));
+    });
+    const count = (list, type) => list.filter((t) => t === type).length;
     page.on("pageerror", (e) => result.errors.push(String(e)));
     page.on("console", (m) => {
       if (/GL_INVALID|WebGL:.*INVALID/.test(m.text()))
@@ -160,15 +169,13 @@ fs.mkdirSync(out, { recursive: true });
     const original = await pixels();
     await stage("haven-initial");
     await page.screenshot({ path: out + "/world.png" });
-    const before = requests.filter((s) =>
-      s.includes("/api/world/region"),
-    ).length;
+    const before = count(frames.received, "region");
     await page.evaluate(() =>
       viewerR2.setCamera([1440, 271, 1280], [1280, 185, 1080]),
     );
     await settled();
     result.moveRequests =
-      requests.filter((s) => s.includes("/api/world/region")).length - before;
+      count(frames.received, "region") - before;
     assert(result.moveRequests <= 28, "移动重载了完整远景");
     await stage("moved");
     await page.evaluate(() =>
@@ -186,9 +193,7 @@ fs.mkdirSync(out, { recursive: true });
     await stage("far-radius-24");
     await change("far-radius", 48);
     await settled();
-    const regionBeforeNear = requests.filter((s) =>
-      s.includes("/api/world/region"),
-    ).length;
+    const regionBeforeNear = count(frames.received, "region");
     await page.evaluate(() =>
       viewerR2.setCamera([1280, 78, 1280], [1210, 70, 1200]),
     );
@@ -200,7 +205,7 @@ fs.mkdirSync(out, { recursive: true });
       (await page.evaluate(() => viewerR2.state)).stream.sections === near8,
     );
     assert.equal(
-      requests.filter((s) => s.includes("/api/world/region")).length,
+      count(frames.received, "region"),
       regionBeforeNear,
     );
     await stage("near-radius-16");

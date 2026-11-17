@@ -10,6 +10,7 @@ require (
 	neomega-converter-core v0.0.0
 	neomega-nbt v0.0.0
 	neomega-r2 v0.0.0
+	neomega-r2link v0.0.0
 	neomega-view-utils v0.0.0
 )
 
@@ -30,6 +31,8 @@ replace neomega-nbt => ../../neomega-nbt
 replace neomega-packfs => ../../neomega-packfs
 
 replace neomega-r2 => ../../neomega-r2
+
+replace neomega-r2link => ../../neomega-r2link
 
 replace neomega-converter-core => ../../neomega-converter-core
 
