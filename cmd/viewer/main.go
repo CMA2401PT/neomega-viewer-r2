@@ -137,20 +137,37 @@ func run() error {
 	address := desktop.BrowserAddress(listener.Addr())
 	desktop.PrintReady(os.Stdout, address, colored)
 	diag.Printf("服务就绪：%s", address)
-	if *browser {
-		openWindow(address, *open, diag)
-	}
-	if runtime.GOOS == "windows" {
-		// 终端里列出几种浏览器与图形后端组合，点按钮或按数字键用另一种组合再开一个窗口。
-		restore, interactive := desktop.ListenChoices(func(i int) {
-			if name, err := desktop.LaunchChoice(address, i, diag); err != nil {
-				fmt.Printf("  打不开 %s：%v\n", desktop.Choices[i].Name, err)
-			} else {
-				fmt.Println("  窗口：" + name)
+	// 程序位于沙箱之类带特殊权限的目录时，从这里启动的浏览器实测必定打不开或白屏（换浏览器、换配置目录都没用），
+	// 所以不自动打开、也不显示按钮，只明确告诉用户把程序挪到别处。
+	restricted, sddl := desktop.RestrictedLocation()
+	if restricted != "" {
+		diag.Printf("程序所在位置带特殊权限，不打开浏览器：%s %s", restricted, sddl)
+		lines := []string{
+			"无法在这里打开浏览器：程序所在目录 " + restricted + " 带有沙箱之类的特殊权限（例如开发工具保护的工作区），",
+			"从这里启动的浏览器会打不开或一直白屏。请把程序复制到别的目录（比如桌面）再运行。",
+		}
+		for _, line := range lines {
+			if colored {
+				line = "\x1b[1;93m" + line + "\x1b[0m"
 			}
-		})
-		defer restore()
-		desktop.PrintChoices(os.Stdout, colored, interactive)
+			fmt.Println("  " + line)
+		}
+	} else {
+		if *browser {
+			openWindow(address, *open, diag)
+		}
+		if runtime.GOOS == "windows" {
+			// 终端里列出几种浏览器与图形后端组合，点按钮或按数字键用另一种组合再开一个窗口。
+			restore, interactive := desktop.ListenChoices(func(i int) {
+				if name, err := desktop.LaunchChoice(address, i, diag); err != nil {
+					fmt.Printf("  打不开 %s：%v\n", desktop.Choices[i].Name, err)
+				} else {
+					fmt.Println("  窗口：" + name)
+				}
+			})
+			defer restore()
+			desktop.PrintChoices(os.Stdout, colored, interactive)
+		}
 	}
 	if diag.Path != "" {
 		fmt.Println("  诊断日志：" + diag.Path + "（遇到问题时把这个文件发给开发者）")

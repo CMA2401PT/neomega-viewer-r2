@@ -19,3 +19,6 @@ func LaunchChoice(address string, i int, diag *Diagnostics) (string, error) {
 
 // ListenChoices 只在 Windows 控制台里提供可点击的按钮。
 func ListenChoices(pick func(int)) (restore func(), ok bool) { return func() {}, false }
+
+// RestrictedLocation 只在 Windows 上检查目录权限。
+func RestrictedLocation() (dir, sddl string) { return "", "" }

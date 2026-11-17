@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -142,4 +143,66 @@ func LaunchChoice(address string, i int, diag *Diagnostics) (string, error) {
 		}
 	}()
 	return choice.Name, nil
+}
+
+// RestrictedLocation 检查 exe 所在目录及其上级是否显式设置了拒绝项或低完整性标签。
+// 开发工具的沙箱会这样保护工作区；从这类目录里的程序启动浏览器时，实测 Chrome 启动即崩溃、Edge 一直白屏，
+// 浏览器配置放在别处也一样，只有把程序本身移出去才正常。
+// 返回带特殊权限的目录及其 SDDL，没有时 dir 为空。
+func RestrictedLocation() (dir, sddl string) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", ""
+	}
+	for path := filepath.Dir(exe); ; path = filepath.Dir(path) {
+		if text := securityDescriptor(path); text != "" && explicitRestriction(text) {
+			return path, text
+		}
+		if filepath.Dir(path) == path {
+			return "", ""
+		}
+	}
+}
+
+// explicitRestriction 判断 SDDL 里是否有非继承（不带 ID 标志）的拒绝项或低完整性标签。
+func explicitRestriction(sddl string) bool {
+	for _, ace := range strings.Split(sddl, "(")[1:] {
+		fields := strings.Split(strings.TrimSuffix(strings.SplitN(ace, ")", 2)[0], ")"), ";")
+		if len(fields) < 2 || strings.Contains(fields[1], "ID") {
+			continue
+		}
+		if fields[0] == "D" || (fields[0] == "ML" && len(fields) >= 6 && fields[5] == "LW") {
+			return true
+		}
+	}
+	return false
+}
+
+// securityDescriptor 读取目录的访问控制列表与完整性标签，转成 SDDL 文本；失败时返回空。
+func securityDescriptor(path string) string {
+	const (
+		fileObject       = 1
+		daclInformation  = 0x4
+		labelInformation = 0x10
+		sddlRevision     = 1
+	)
+	advapi := syscall.NewLazyDLL("advapi32.dll")
+	name, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		return ""
+	}
+	var descriptor uintptr
+	if r, _, _ := advapi.NewProc("GetNamedSecurityInfoW").Call(uintptr(unsafe.Pointer(name)), fileObject,
+		daclInformation|labelInformation, 0, 0, 0, 0, uintptr(unsafe.Pointer(&descriptor))); r != 0 {
+		return ""
+	}
+	defer syscall.LocalFree(syscall.Handle(descriptor))
+	var text *uint16
+	var length uint32
+	if r, _, _ := advapi.NewProc("ConvertSecurityDescriptorToStringSecurityDescriptorW").Call(descriptor, sddlRevision,
+		daclInformation|labelInformation, uintptr(unsafe.Pointer(&text)), uintptr(unsafe.Pointer(&length))); r == 0 {
+		return ""
+	}
+	defer syscall.LocalFree(syscall.Handle(unsafe.Pointer(text)))
+	return syscall.UTF16ToString(unsafe.Slice(text, length))
 }
