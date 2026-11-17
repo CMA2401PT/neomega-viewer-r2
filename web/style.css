@@ -232,6 +232,27 @@ svg .fill {
 #loading.faded {
   opacity: 0;
 }
+#startup-status {
+  position: fixed;
+  z-index: 7;
+  top: 28%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(420px, calc(100% - 32px));
+  padding: 22px 26px;
+  text-align: center;
+  pointer-events: none;
+}
+#startup-stage {
+  display: block;
+  font-size: 17px;
+  margin-bottom: 8px;
+}
+#startup-elapsed {
+  display: block;
+  color: #46595d;
+  overflow-wrap: anywhere;
+}
 /* 右上角面板尽量窄，少挡画面；按钮与标题随之缩小。 */
 #toolbar {
   position: fixed;
@@ -556,6 +577,19 @@ dialog::backdrop {
 #source-options input:not([type="checkbox"]) { width: 120px; min-width: 0; }
 .file[aria-selected="true"] { background: #dfedeb; }
 #files { max-height: 92vh; overflow: auto; }
+#file-drop {
+  border: 2px dashed #777;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #111;
+  padding: 18px 12px;
+  margin-bottom: 14px;
+  text-align: center;
+}
+#file-drop strong, #file-drop span { display: block; pointer-events: none; }
+#file-drop span { margin-top: 5px; font-size: 12px; color: #555; }
+#file-drop.drag-over { background: #fff; border-color: #111; }
+#file-drop[aria-busy="true"] { opacity: 0.6; }
 .picker-title {
   display: flex;
   justify-content: space-between;

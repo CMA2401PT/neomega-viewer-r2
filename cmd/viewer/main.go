@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -47,6 +48,7 @@ func run() error {
 	structureWorkers := flag.Int("structure-workers", 0, "结构写出并发上限，0 自动选择")
 	webPath := flag.String("web", "", "开发时读取应用网页目录")
 	browser := flag.Bool("browser", true, "启动后自动打开应用窗口")
+	desktopHost := flag.Bool("desktop-host", false, "桌面宿主模式：stdout 上报 JSON 就绪消息，stdin 关闭时退出，不启动外部浏览器")
 	open := flag.String("open", desktop.Choices[0].Key, "启动时打开窗口用的浏览器与图形后端：edge-vulkan、chrome-vulkan、chrome-gl；system 表示系统默认浏览器")
 	showVersion := flag.Bool("version", false, "打印版本号后退出")
 	flag.Parse()
@@ -67,9 +69,20 @@ func run() error {
 	log.SetOutput(io.MultiWriter(os.Stderr, diag))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if *desktopHost {
+		// 宿主独占 stdin 管道；正常关闭或宿主崩溃都通过 EOF 释放服务。
+		go func() {
+			_, _ = io.Copy(io.Discard, os.Stdin)
+			stop()
+		}()
+	}
 	colored := desktop.TerminalColors()
-	desktop.PrintBanner(os.Stdout, version, colored)
-	progress := desktop.Progress{Out: os.Stdout, Colored: colored}
+	var output io.Writer = os.Stdout
+	if *desktopHost {
+		output = io.Discard
+	}
+	desktop.PrintBanner(output, version, colored)
+	progress := desktop.Progress{Out: output, Colored: colored}
 	progress.Step("准备中…")
 	progress.Step("读取模型目录…")
 	catalog, err := r2.OpenCatalog()
@@ -135,42 +148,53 @@ func run() error {
 	go func() { done <- httpServer.Serve(listener) }()
 	progress.Done()
 	address := desktop.BrowserAddress(listener.Addr())
-	desktop.PrintReady(os.Stdout, address, colored)
+	desktop.PrintReady(output, address, colored)
 	diag.Printf("服务就绪：%s", address)
-	// 程序位于沙箱之类带特殊权限的目录时，从这里启动的浏览器实测必定打不开或白屏（换浏览器、换配置目录都没用），
-	// 所以不自动打开、也不显示按钮，只明确告诉用户把程序挪到别处。
-	restricted, sddl := desktop.RestrictedLocation()
-	if restricted != "" {
-		diag.Printf("程序所在位置带特殊权限，不打开浏览器：%s %s", restricted, sddl)
-		lines := []string{
-			"无法在这里打开浏览器：程序所在目录 " + restricted + " 带有沙箱之类的特殊权限（例如开发工具保护的工作区），",
-			"从这里启动的浏览器会打不开或一直白屏。请把程序复制到别的目录（比如桌面）再运行。",
-		}
-		for _, line := range lines {
-			if colored {
-				line = "\x1b[1;93m" + line + "\x1b[0m"
-			}
-			fmt.Println("  " + line)
+	if *desktopHost {
+		if err := json.NewEncoder(os.Stdout).Encode(struct {
+			Event string `json:"event"`
+			URL   string `json:"url"`
+			Log   string `json:"log"`
+		}{Event: "ready", URL: address, Log: diag.Path}); err != nil {
+			_ = httpServer.Close()
+			return err
 		}
 	} else {
-		if *browser {
-			openWindow(address, *open, diag)
-		}
-		if runtime.GOOS == "windows" {
-			// 终端里列出几种浏览器与图形后端组合，点按钮或按数字键用另一种组合再开一个窗口。
-			restore, interactive := desktop.ListenChoices(func(i int) {
-				if name, err := desktop.LaunchChoice(address, i, diag); err != nil {
-					fmt.Printf("  打不开 %s：%v\n", desktop.Choices[i].Name, err)
-				} else {
-					fmt.Println("  窗口：" + name)
+		// 程序位于沙箱之类带特殊权限的目录时，从这里启动的浏览器实测必定打不开或白屏（换浏览器、换配置目录都没用），
+		// 所以不自动打开、也不显示按钮，只明确告诉用户把程序挪到别处。
+		restricted, sddl := desktop.RestrictedLocation()
+		if restricted != "" {
+			diag.Printf("程序所在位置带特殊权限，不打开浏览器：%s %s", restricted, sddl)
+			lines := []string{
+				"无法在这里打开浏览器：程序所在目录 " + restricted + " 带有沙箱之类的特殊权限（例如开发工具保护的工作区），",
+				"从这里启动的浏览器会打不开或一直白屏。请把程序复制到别的目录（比如桌面）再运行。",
+			}
+			for _, line := range lines {
+				if colored {
+					line = "\x1b[1;93m" + line + "\x1b[0m"
 				}
-			})
-			defer restore()
-			desktop.PrintChoices(os.Stdout, colored, interactive)
+				fmt.Println("  " + line)
+			}
+		} else {
+			if *browser {
+				openWindow(address, *open, diag)
+			}
+			if runtime.GOOS == "windows" {
+				// 终端里列出几种浏览器与图形后端组合，点按钮或按数字键用另一种组合再开一个窗口。
+				restore, interactive := desktop.ListenChoices(func(i int) {
+					if name, err := desktop.LaunchChoice(address, i, diag); err != nil {
+						fmt.Printf("  打不开 %s：%v\n", desktop.Choices[i].Name, err)
+					} else {
+						fmt.Println("  窗口：" + name)
+					}
+				})
+				defer restore()
+				desktop.PrintChoices(os.Stdout, colored, interactive)
+			}
 		}
-	}
-	if diag.Path != "" {
-		fmt.Println("  诊断日志：" + diag.Path + "（遇到问题时把这个文件发给开发者）")
+		if diag.Path != "" {
+			fmt.Println("  诊断日志：" + diag.Path + "（遇到问题时把这个文件发给开发者）")
+		}
 	}
 	select {
 	case err := <-done:

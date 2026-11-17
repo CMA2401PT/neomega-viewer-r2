@@ -11,6 +11,7 @@ import { createHUD, element, closePopovers } from "./hud.js";
 import { drawAxes } from "./overlay.js";
 import { FullscreenMap } from "./map.js";
 import { report, describe, startDiagnostics } from "./diagnostics.js";
+import { startupStage, finishStartup } from "./startup.js";
 
 startDiagnostics();
 
@@ -164,32 +165,20 @@ async function openWorld(path, options = {}, progress, signal) {
   }
 }
 saveSettings();
-// 页面顶部那行提示同时用来显示射线程序的编译进度；D3D 后端可能编几十秒，
-// 不显示进度会让人以为卡死。
-const statusLine = element("loading");
-let compileTicker = 0;
 const compileStarted = performance.now();
-const showCompile = ({ index, total, label }) => {
+const showCompile = async ({ index, total, label }) => {
   report("compile", { index, total, label, seconds: +((performance.now() - compileStarted) / 1000).toFixed(1) });
-  clearInterval(compileTicker);
-  const tick = () => {
-    const seconds = ((performance.now() - compileStarted) / 1000).toFixed(0);
-    statusLine.textContent = `正在编译 ${label}（${index}/${total}）· 已用 ${seconds} 秒`;
-  };
-  tick();
-  compileTicker = setInterval(tick, 1000);
+  await startupStage(`${label}（${index}/${total}）`);
 };
-statusLine.textContent = "正在准备渲染器…";
+await startupStage("正在初始化图形设备…");
 try {
   renderer = await createRenderer(canvas, { onProgress: showCompile });
   report("renderer-ready", { seconds: +((performance.now() - compileStarted) / 1000).toFixed(1) });
 } catch (error) {
   report("renderer-failed", { seconds: +((performance.now() - compileStarted) / 1000).toFixed(1), message: describe(error) });
   throw error;
-} finally {
-  clearInterval(compileTicker);
-  statusLine.textContent = "";
 }
+await startupStage("正在准备场景…");
 map = new FullscreenMap({
   renderer,
   camera,
@@ -520,6 +509,7 @@ function frame(now) {
       fog: view.fog,
       objects,
     });
+    if (rendered && stream?.stats.loaded > 0) finishStartup();
   }
   if (changed) {
     if (now - drawnAt < 250) frames.push(now - drawnAt);
@@ -578,11 +568,15 @@ function frame(now) {
   }
 }
 
-if (settings.texturePath || settings.textureSize !== 128)
+if (settings.texturePath || settings.textureSize !== 128) {
+  await startupStage("正在加载自定义材质…");
   await applyTextures(settings.texturePath).catch((error) =>
     hud.error(String(error)),
   );
+}
+await startupStage("正在读取场景信息…");
 await useWorld(await (await fetch("/api/world")).json());
+await startupStage("正在加载场景，准备第一帧…");
 // 运行一阵后记下实际帧率与 GPU 时间，判断这种浏览器与图形后端组合是否够快。
 for (const delay of [15000, 60000])
   setTimeout(() => {

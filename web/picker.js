@@ -1,4 +1,4 @@
-// 存档与材质包共用服务端目录浏览器，路径始终由服务端返回。
+// 存档与材质包共用服务端目录浏览器；Electron 也可提交用户拖入的本机路径。
 /** 文件选择与打开分开，让用户在转换前选定维度、修复和预算。
  * @param {(path:string,options?:Object,progress?:(value:Object)=>void,signal?:AbortSignal)=>Promise<void>} openWorld
  */
@@ -10,6 +10,10 @@ export function createPicker(openWorld) {
     dimension = document.querySelector("#source-dimension"),
     dimensions = dimension;
   let listing, selected = "", kind = "world", onChoose = openWorld, opening, currentWorld = {};
+  let browsing, dropping = false;
+  const dropZone = document.querySelector("#file-drop");
+  const desktopFiles = globalThis.desktopFiles;
+  dropZone.hidden = typeof desktopFiles?.pathForFile !== "function";
   const paths = { world: "", pack: "" };
   const labels = {
     directory: "Java 存档", bedrock: "Bedrock 存档", folder: "目录",
@@ -29,12 +33,16 @@ export function createPicker(openWorld) {
   }
   /** 浏览错误留在选择器中，用户可以修改路径继续。 @param {string} path */
   async function browse(path = "") {
+    if (opening) return false;
+    browsing?.abort();
+    const controller = new AbortController();
+    browsing = controller;
     message.textContent = "正在读取目录…";
     input.disabled = true;
     document.querySelector("#open-directory").disabled = true;
     document.querySelector("#parent").disabled = true;
     try {
-      const response = await fetch("/api/files?kind=" + kind + "&path=" + encodeURIComponent(path));
+      const response = await fetch("/api/files?kind=" + kind + "&path=" + encodeURIComponent(path), { signal: controller.signal });
       if (!response.ok) throw Error(await response.text());
       listing = await response.json();
       selected = listing.selected;
@@ -73,11 +81,18 @@ export function createPicker(openWorld) {
         list.append(row);
       }
       message.textContent = listing.entries.length + " 个项目";
-    } catch (error) { message.textContent = String(error); }
+      return true;
+    } catch (error) {
+      if (error.name !== "AbortError") message.textContent = String(error);
+      return false;
+    }
     finally {
-      input.disabled = false;
-      document.querySelector("#open-directory").disabled = false;
-      document.querySelector("#parent").disabled = !listing;
+      if (browsing === controller) {
+        browsing = null;
+        input.disabled = false;
+        document.querySelector("#open-directory").disabled = false;
+        document.querySelector("#parent").disabled = !listing;
+      }
     }
   }
   /** 进度来自转换器的阶段，不能把读取字节进度当作整个转换的完成比例。 */
@@ -87,6 +102,9 @@ export function createPicker(openWorld) {
   }
   /** 保持对话框直到来源准备完成，关闭对话框会取消仍在进行的转换。 @param {string} path */
   async function choose(path) {
+    if (opening) return;
+    browsing?.abort();
+    browsing = null;
     message.textContent = kind === "pack" ? "正在合成材质包…" : "正在打开来源…";
     opening = new AbortController();
     document.querySelector("#open-directory").disabled = true;
@@ -108,7 +126,42 @@ export function createPicker(openWorld) {
       document.querySelector("#open-directory").disabled = false;
     }
   }
-  dialog.addEventListener("close", () => opening?.abort());
+  dialog.addEventListener("close", () => {
+    opening?.abort();
+    browsing?.abort();
+    dropZone.classList.remove("drag-over");
+  });
+  dropZone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = opening || dropping ? "none" : "copy";
+    if (!opening && !dropping) dropZone.classList.add("drag-over");
+  });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+  dropZone.addEventListener("drop", async (event) => {
+    event.preventDefault();
+    dropZone.classList.remove("drag-over");
+    if (opening || dropping) return;
+    const files = [...event.dataTransfer.files];
+    if (files.length !== 1) {
+      message.textContent = "请一次拖入一个目录或文件。";
+      return;
+    }
+    dropping = true;
+    dropZone.setAttribute("aria-busy", "true");
+    try {
+      const path = desktopFiles.pathForFile(files[0]);
+      if (!path) throw Error("无法读取路径，请从文件资源管理器拖入本地目录或文件。");
+      const chosenDimension = dimension.value;
+      // 先由 Go 识别来源种类、规范化路径，再走原有打开、转换与取消流程。
+      if (!await browse(path) || !dialog.open) return;
+      if ([...dimension.options].some((option) => option.value === chosenDimension)) dimension.value = chosenDimension;
+      await choose(input.value);
+    } catch (error) { message.textContent = String(error); }
+    finally {
+      dropping = false;
+      dropZone.setAttribute("aria-busy", "false");
+    }
+  });
   document.querySelector("#browse").onclick = () => browse(input.value);
   input.addEventListener("input", () => { setDimensions([""]); });
   input.addEventListener("keydown", (event) => {
@@ -126,6 +179,9 @@ export function createPicker(openWorld) {
     document.querySelector("#source-memory").value = world.structureMemoryMiB || 512;
     document.querySelector("#source-workers").value = world.structureWorkers || 0;
     document.querySelector("#source-options").hidden = kind === "pack";
+    document.querySelector("#file-drop-title").textContent = kind === "pack"
+      ? "将材质包 ZIP 或目录拖到这里使用"
+      : "将存档目录或文件拖到这里打开";
     dialog.querySelector("h2").textContent = kind === "pack" ? "选择 Java 材质包" : "打开存档或结构";
     document.querySelector("#open-directory").textContent = kind === "pack" ? "使用材质包" : "打开所选来源";
     document.querySelector("#source-hint").textContent = kind === "pack"

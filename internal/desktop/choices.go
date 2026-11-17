@@ -18,9 +18,10 @@ type Choice struct {
 
 // Choices 的第一项是默认组合；找不到对应浏览器时按顺序尝试下一项。
 var Choices = []Choice{
+	{Key: "edge-gl", Name: "Edge + OpenGL", Browser: "edge", Angle: "gl"},
 	{Key: "edge-vulkan", Name: "Edge + Vulkan", Browser: "edge", Angle: "vulkan"},
-	{Key: "chrome-vulkan", Name: "Chrome + Vulkan", Browser: "chrome", Angle: "vulkan"},
 	{Key: "chrome-gl", Name: "Chrome + OpenGL", Browser: "chrome", Angle: "gl"},
+	{Key: "chrome-vulkan", Name: "Chrome + Vulkan", Browser: "chrome", Angle: "vulkan"},
 }
 
 // FindChoice 按 Key 查找组合。
