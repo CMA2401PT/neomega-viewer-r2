@@ -1,5 +1,5 @@
 // 场景读数使用独立 2D 坐标轴，不参与主画布的射线绘制或照片输出。
-import { cameraBasis } from "/r2/render/camera.js";
+import { cameraBasis } from "/r2/index.js";
 
 /** 相机三条轴投影到屏幕，按深度排序让靠近观察者的轴盖住远轴。
  * @param {HTMLCanvasElement} canvas

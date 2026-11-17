@@ -1,5 +1,5 @@
 // 全屏地图只提供相机和输入；近处复用主射线渲染器，远处用区块位图显示存档分布。
-import { cameraBasis, cameraRay } from "/r2/render/camera.js";
+import { cameraBasis, cameraRay } from "/r2/index.js";
 import { element, closePopovers } from "./hud.js";
 
 /** 把地图像素投影到水平参考面，拖动与光标缩放因此保持同一世界锚点。
@@ -14,7 +14,7 @@ export function mapPoint(camera, { width, height, x, y, plane }) {
 
 /** 地图控制器持有独立姿态；主视图相机只在跳转时改变。 */
 export class FullscreenMap {
-  /** @param {{camera:{position:number[],yaw:number,pitch:number},renderer:Awaited<ReturnType<import("/r2/render/renderer.js").createRenderer>>,jump:(position:number[])=>void}} options */
+  /** @param {{camera:{position:number[],yaw:number,pitch:number},renderer:Awaited<ReturnType<import("/r2/index.js").createRenderer>>,jump:(position:number[])=>void}} options */
   constructor({ camera, renderer, jump }) {
     this.mainCamera = camera;
     this.renderer = renderer;

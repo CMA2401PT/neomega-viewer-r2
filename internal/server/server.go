@@ -244,7 +244,7 @@ func (s *Server) Handler(web fs.FS) http.Handler {
 	mux.HandleFunc("POST /api/world/view", s.view)
 	mux.HandleFunc("POST /api/world/connect", s.connect)
 	assets, _ := fs.Sub(r2.Files, "assets")
-	core, _ := fs.Sub(r2.Files, "web")
+	core, _ := fs.Sub(r2.Files, "dist")
 	mux.Handle("/r2/assets/", http.StripPrefix("/r2/assets/", http.FileServerFS(assets)))
 	mux.Handle("/r2/", http.StripPrefix("/r2/", http.FileServerFS(core)))
 	mux.HandleFunc("GET /api/world", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, s.Info()) })

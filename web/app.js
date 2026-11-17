@@ -1,8 +1,5 @@
 // 应用组装存档会话、飞行/地图视图与同一射线帧循环；UI 事件和投影分别放在独立模块。
-import { decodeTextures } from "/r2/render/textures.js";
-import { createRenderer } from "/r2/render/renderer.js";
-import { ObjectRegistry } from "/r2/objects/registry.js";
-import { enchantingBook } from "/r2/effects/enchanting-book.js";
+import { decodeTextures, createRenderer, ObjectRegistry, enchantingBook } from "/r2/index.js";
 import { WorldStream } from "./stream.js";
 import { FlightControls } from "./controls.js";
 import { bindMovePad } from "./movepad.js";

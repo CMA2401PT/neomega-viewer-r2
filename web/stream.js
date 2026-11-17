@@ -1,8 +1,8 @@
-import { regionKey } from "/r2/scene/prepare.js";
+import { regionKey } from "/r2/index.js";
 
 /** 应用调度器：网络、后台准备和 GPU 发布分别限流；核心不感知视距控件或 HTTP 会话。 */
 export class WorldStream {
-  /** @param {{renderer:Awaited<ReturnType<import("/r2/render/renderer.js").createRenderer>>,world:{id:number},registry:import("/r2/objects/registry.js").ObjectRegistry,onError:(message:string)=>void}} options */
+  /** @param {{renderer:Awaited<ReturnType<import("/r2/index.js").createRenderer>>,world:{id:number},registry:import("/r2/index.js").ObjectRegistry,onError:(message:string)=>void}} options */
   constructor({ renderer, world, registry, onError }) {
     this.renderer = renderer;
     // 越界来源范围取自共享模型，不绑定某一种方块的尺寸。
@@ -439,7 +439,7 @@ export class WorldStream {
     this.pump();
   }
   /** 用缓存来源按新透明分类重新准备已显示区域，完成后同帧发布贴图和空间目录。
-   * @param {import("/r2/render/textures.js").TextureSet} set
+   * @param {import("/r2/index.js").TextureSet} set
    */
   async setTextures(set) {
     const change = { set, versions: new Map() };
