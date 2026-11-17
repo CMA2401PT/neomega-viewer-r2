@@ -1,6 +1,6 @@
 # R2Link：向 R2 推送方块世界
 
-> **正在重写。** R2 的 Go 服务已不再连接数据源，TCP 传输已移除。新版本由浏览器直接通过 WebSocket 连接数据源，作为核心世界会话的一种数据源；协议会随之按会话的区域订阅调整。下文描述旧版本的消息格式，仅供参考；Python 示例仍是旧的 TCP 版本，暂时无法使用。
+> **正在重写。** R2 的 Go 服务已不再连接数据源，TCP 传输已移除。新版本由浏览器直接通过 WebSocket 连接数据源，作为核心世界会话的一种数据源；协议会随之按会话的区域订阅调整。下文描述旧版本的消息格式，仅供参考。
 
 R2Link 是游戏机器人、服务器插件或存档服务向 R2 浏览器应用提供方块内容的协议。**数据源监听端口，R2 的 Go 服务主动连接数据源**；网页连接 R2，不直接连接数据源。一次会话按 `hello → welcome → ready → interest → chunk…` 建立：R2 先声明协议版本，数据源描述场景，R2 准备好内存世界后通知就绪，并持续告知观察范围。数据源可以更新方块、移动相机或清空场景。断线时 R2 保留最后画面，每 3 秒重试；重新连接从握手开始建立空世界。
 
@@ -180,37 +180,15 @@ R2 默认给连接世界 512 MiB 预算，统计调色板、压缩索引和修�
 
 R2 和数据源可发送 `{"type":"error","message":"原因"}` 说明错误，随后结束连接。解码失败直接结束当前连接。
 
-## 运行最小示例
+## 示例数据源
 
-在工作区根目录打开一个终端启动 R2：
-
-```sh
-go run ./apps/neomega-viewer-r2/cmd/viewer \
-  -listen 127.0.0.1:2412 -browser=false
-```
-
-另一个终端运行只依赖 Python 标准库的小场景：
-
-```sh
-python3 apps/neomega-viewer-r2/examples/python-source/source.py --port 2415
-```
-
-打开网页 <http://127.0.0.1:2412>，点击 HUD 的链接图标（“连接数据源”），输入 `tcp://127.0.0.1:2415`。也可以启动 R2 时加 `-connect tcp://127.0.0.1:2415`。[Python 示例](../examples/python-source/source.py) 展示分帧、握手、两位调色板索引和一个完整区块。
-
-需要提供真实 Java 世界时，运行 [Go 数据源](../examples/java-source/main.go)：
+[Go 数据源](../examples/java-source/main.go) 把 Java 世界按关注范围发送出去，在工作区根目录运行：
 
 ```sh
 go run ./apps/neomega-viewer-r2/examples/java-source \
   -world '/path/to/java-world' -listen 127.0.0.1:2414
 ```
 
-R2 连接 `tcp://127.0.0.1:2414`。`-world` 也可使用 Java `.pack`，`-dimension DIM-1` 选择下界。示例默认每 30 秒发送一次位置重置，`-camera-every 0` 关闭定时重置。
+它在 `ws://127.0.0.1:2414/r2link` 等待连接。`-world` 也可使用 Java `.pack`，`-dimension DIM-1` 选择下界；示例默认每 30 秒发送一次位置重置，`-camera-every 0` 关闭。浏览器连接入口重写完成之前，R2 暂时无法连接它。
 
-同一示例使用 WebSocket：
-
-```sh
-go run ./apps/neomega-viewer-r2/examples/java-source \
-  -world '/path/to/java-world' -listen 127.0.0.1:2414 -transport ws
-```
-
-R2 连接 `ws://127.0.0.1:2414/r2link`。Go 实现可以复用应用公开包 `neomega-viewer-r2/r2link`；其中 `Encode/Decode` 处理消息体，`TCP/WebSocket` 包装已连接传输，`FromStorage` 将内部调色板改成协议位宽。WebSocket 帧处理使用 [coder/websocket](https://pkg.go.dev/github.com/coder/websocket)，不影响其他语言的数据源实现。
+Go 实现可以复用应用公开包 `neomega-viewer-r2/r2link`：`Encode/Decode` 处理消息体，`WebSocket` 包装已建立的连接，`FromStorage` 将内部调色板改成协议位宽。WebSocket 帧处理使用 [coder/websocket](https://pkg.go.dev/github.com/coder/websocket)。

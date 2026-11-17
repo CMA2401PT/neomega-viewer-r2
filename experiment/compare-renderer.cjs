@@ -1,10 +1,11 @@
-// 只替换射线着色器与 renderer，保持来源、资源和应用设置一致，避免跨版本基线混入配置差异。
+// 只替换渲染核心（neomega-r2 的 dist），保持来源、资源和应用设置一致，避免跨版本基线混入配置差异。
 const { chromium } = require(
   process.env.PLAYWRIGHT_MODULE ||
     "/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules/playwright",
 );
 const fs = require("node:fs");
 const path = require("node:path");
+const os = require("node:os");
 const { execFileSync } = require("node:child_process");
 const assert = require("node:assert/strict");
 const root = path.resolve(__dirname, "../../..");
@@ -12,42 +13,55 @@ const core = path.join(root, "neomega-r2");
 const base = process.env.R2_URL || "http://127.0.0.1:2417";
 const out = process.env.R2_OUTPUT || "/tmp/r2link/ui2/performance";
 const refs = (process.env.R2_COMPARE || "d964c8c,current").split(",");
-const files = ["renderer.js", "ray.frag"];
 const settings = {
   nearRadius: 2,
   farRadius: 32,
   resolution: "native",
+  tier: "shading",
   time: 10,
   timeFlow: false,
   fog: true,
-  stillSamples: 0,
+  stillAccumulation: false,
 };
 fs.mkdirSync(out, { recursive: true });
 
+/** 读取一份构建好的核心目录，键为相对 /r2/ 的路径。 @param {string} dir */
+function readDist(dir) {
+  const files = new Map();
+  for (const entry of fs.readdirSync(dir, { recursive: true, withFileTypes: true }))
+    if (entry.isFile()) {
+      const file = path.join(entry.parentPath, entry.name);
+      files.set(path.relative(dir, file).split(path.sep).join("/"), fs.readFileSync(file));
+    }
+  return files;
+}
+
 /** 响应替换只影响测试浏览器，工作区和运行中的服务都不用切换文件。
+ * current 读取工作区的 dist（先 npm run build）；R2_VARIANTS/<ref> 是另存的 dist；
+ * 其他值是 neomega-r2 的 Git 版本，在临时 worktree 中用工作区的 TypeScript 构建。
+ * 只有与当前应用接口一致的版本（四档绘制器之后）才能比较。
  * @param {string} ref
  */
-function renderFiles(ref) {
-  return new Map(
-    files.map((name) => [
-      name,
-      ref === "current"
-        ? fs.readFileSync(path.join(core, "web/render", name))
-        : process.env.R2_VARIANTS &&
-            fs.existsSync(path.join(process.env.R2_VARIANTS, ref, name))
-          ? fs.readFileSync(path.join(process.env.R2_VARIANTS, ref, name))
-          : execFileSync("git", ["show", `${ref}:web/render/${name}`], {
-              cwd: core,
-            }),
-    ]),
-  );
+function coreFiles(ref) {
+  if (ref === "current") return readDist(path.join(core, "dist"));
+  const variant = process.env.R2_VARIANTS && path.join(process.env.R2_VARIANTS, ref);
+  if (variant && fs.existsSync(variant)) return readDist(variant);
+  const tree = fs.mkdtempSync(path.join(os.tmpdir(), "r2-core-"));
+  execFileSync("git", ["worktree", "add", "--detach", tree, ref], { cwd: core, stdio: "ignore" });
+  try {
+    fs.symlinkSync(path.join(core, "node_modules"), path.join(tree, "node_modules"), "junction");
+    execFileSync(process.execPath, [path.join(tree, "scripts/build.mjs")], { cwd: tree, stdio: "inherit" });
+    return readDist(path.join(tree, "dist"));
+  } finally {
+    fs.rmSync(path.join(tree, "node_modules"), { force: true });
+    execFileSync("git", ["worktree", "remove", "--force", tree], { cwd: core, stdio: "ignore" });
+  }
 }
 
 (async () => {
   const snapshots = refs.map((ref) => ({
     ref,
-    files: renderFiles(ref === "old-app" ? "current" : ref),
-    oldApp: ref === "old-app" || !!process.env.R2_OLD_APP,
+    files: coreFiles(ref),
   }));
   const browser = await chromium.launch({
     executablePath:
@@ -85,8 +99,8 @@ function renderFiles(ref) {
       }, settings);
       const page = await context.newPage();
       page.on("pageerror", (error) => report.errors.push(String(error)));
-      await page.route("**/r2/render/*", async (route) => {
-        const name = new URL(route.request().url()).pathname.split("/").at(-1);
+      await page.route("**/r2/**", async (route) => {
+        const name = new URL(route.request().url()).pathname.slice("/r2/".length);
         const body = snapshot.files.get(name);
         if (body)
           await route.fulfill({
@@ -97,17 +111,6 @@ function renderFiles(ref) {
           });
         else await route.continue();
       });
-      // 旧应用对照只移除新增会话通知与失效调度，仍用同一服务提供 Java 区域。
-      if (snapshot.oldApp) {
-        for (const name of ["app.js", "stream.js"]) {
-          const body = execFileSync("git", ["show", `766fe97:web/${name}`], {
-            cwd: path.join(root, "apps/neomega-viewer-r2"),
-          });
-          await page.route(`**/${name}`, (route) =>
-            route.fulfill({ body, contentType: "application/javascript" }),
-          );
-        }
-      }
       await page.goto(base);
       await page.waitForFunction(() => globalThis.viewerR2);
       report.gpu = await page.evaluate(() => {
@@ -128,7 +131,6 @@ function renderFiles(ref) {
       }, process.env.R2_WORLD || "/Users/dai/Downloads/新天堂");
       const result = {
         ref: snapshot.ref,
-        oldApp: snapshot.oldApp,
         views: [],
       };
       for (const [name, eye, target] of [

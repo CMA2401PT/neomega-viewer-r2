@@ -9,7 +9,7 @@ const ticker = setInterval(() => {
 }, 1000);
 
 /** 让状态先出现在屏幕上，再进入可能同步阻塞的显卡调用。 */
-export function paintStartup() {
+function paintStartup() {
   return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 }
 

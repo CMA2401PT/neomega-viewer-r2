@@ -40,22 +40,22 @@ node apps/neomega-viewer-r2/experiment/sources.cjs
 
 ## 同设置 GPU 对照
 
-不同阴影、视距和质量档位的 GPU 时间不能直接比较。`compare-renderer.cjs` 只替换浏览器收到的 `ray.frag` 和 `renderer.js`，其余资源、服务和来源保持相同。旧文件通过 `git show` 读取，工作区文件不用切换。
+不同阴影、视距和质量档位的 GPU 时间不能直接比较。`compare-renderer.cjs` 只替换浏览器从 `/r2/` 收到的渲染核心（`neomega-r2` 的 `dist`），应用页面、资源、服务和来源保持相同。旧版本在临时 git worktree 中用工作区的 TypeScript 构建，工作区文件不用切换。
 
 脚本使用“新天堂”的高空、树冠、建筑三个固定视角。设置为 1920×1080 原生分辨率、near 2、far 32、阴影和雾开启、游戏时间 10 点、水面时刻 0 秒。连续绘制预览帧，关闭累积与动态时间。每个视角收集 240 个 GPU 查询，去掉前 40 个再计算中位数和 P95；计时包含射线绘制与显示合成。脚本断言预览样本数为零，并保存参数、GPU、时间样本、界面截图及纯画布图片。
 
 ```sh
 R2_URL=http://127.0.0.1:2417 \
-R2_COMPARE=current,d964c8c,a412797,d964c8c,current \
+R2_COMPARE=current,320cbb2,current \
 R2_OUTPUT=/tmp/r2link/ui2/final-performance \
 node apps/neomega-viewer-r2/experiment/compare-renderer.cjs
 ```
 
-`current` 指工作区的绘制器，其他值是 `neomega-r2` 的 Git 版本。`R2_WORLD` 可替换存档路径，但三个取景点应一起调整。`R2_VIEWS=aerial` 可以只测高空视角。所有 GPU 测量顺序运行，避免另一浏览器的绘制竞争 GPU。
+`current` 指工作区已构建的 `dist`（先运行 `npm run build`），其他值是 `neomega-r2` 的 Git 版本。`R2_WORLD` 可替换存档路径，但三个取景点应一起调整。`R2_VIEWS=aerial` 可以只测高空视角。所有 GPU 测量顺序运行，避免另一浏览器的绘制竞争 GPU。
 
 `R2_ISOLATE_DRAW=1` 在区域加载完成后暂停应用帧循环，直接按相同参数提交预览帧，并同步等待每帧 GPU 完成。这个对照把绘制程序成本与页面调度分开；GPU 查询仍只覆盖射线和显示合成。
 
-需要核对新增应用调度的影响时，在 `R2_COMPARE` 中加入 `old-app`，使用工作区绘制器与应用 `766fe97` 的 `app.js`、`stream.js`，仍读取同一服务提供的 Java 区域。`R2_OLD_APP=1` 可让整组版本都使用旧应用调度。`R2_VARIANTS` 可指定存放临时着色器对照的目录，每个版本名下包含两份绘制文件。
+旧版本必须与当前应用的绘制接口一致，即四档绘制器（`320cbb2`）之后的版本。`R2_VARIANTS` 可指定存放临时对照的目录，每个版本名下是一份完整的 `dist`，优先于同名的 Git 版本。
 
 ## 静态模型验证内容
 
@@ -69,4 +69,4 @@ node apps/neomega-viewer-r2/experiment/compare-renderer.cjs
 
 结果见 [功能断言](results/static-models.json) 和 [远景静态模型原图](results/static-models-far.png)。Go 检查包含单份模型调色板传输、只在近景调用 NBT 处理器和会话切换；核心测试包含跨区片段、实例与显存地址回收。
 
-旧版简化远景的性能和流式加载结果保留在 [固定版本报告](streaming-baseline.md)。完整静态模型的绘制耗时使用上面的同设置对照脚本测量。
+绘制耗时使用上面的同设置对照脚本测量。

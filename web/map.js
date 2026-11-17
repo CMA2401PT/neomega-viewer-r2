@@ -6,7 +6,7 @@ import { element, closePopovers } from "./hud.js";
  * @param {{position:number[],yaw:number,pitch:number,ortho:number}} camera
  * @param {{width:number,height:number,x:number,y:number,plane:number}} options
  */
-export function mapPoint(camera, { width, height, x, y, plane }) {
+function mapPoint(camera, { width, height, x, y, plane }) {
   const ray = cameraRay(camera, { width, height, x: x - 0.5, y: y - 0.5 });
   const t = (plane - ray.origin[1]) / ray.direction[1];
   return ray.origin.map((v, i) => v + ray.direction[i] * t);

@@ -146,11 +146,15 @@ Go 入口 `cmd/viewer/main.go` 选择需要启用的 effector 和 block actor �
 
 ## 构建与验收
 
-网页和共享资源嵌入 Go 二进制，没有前端打包步骤。开发时可用 `-web ./apps/neomega-viewer-r2/web` 直接读取应用网页；核心网页仍取自嵌入资源，改核心后需重新编译。
+应用网页和渲染核心都嵌入 Go 二进制。渲染核心是 TypeScript，`go build` 之前先构建它的 `dist`（首次执行 `npm ci`）。开发时可用 `-web ./apps/neomega-viewer-r2/web` 直接读取应用网页；核心取自嵌入的 `dist`，改核心后需重新构建并编译。
 
 ```sh
-./check.sh neomega-r2 apps/neomega-viewer-r2
-node --test neomega-r2/tests/*.mjs
+npm --prefix neomega-r2 ci
+npm --prefix neomega-r2 run build
+npm --prefix neomega-r2 run check
+npm --prefix neomega-r2 test
+go vet ./neomega-r2/... ./apps/neomega-viewer-r2/...
+go test ./neomega-r2/... ./apps/neomega-viewer-r2/...
 go run ./apps/neomega-viewer-r2/experiment/fixture -out /tmp/neomega-r2-java-fixture
 go run ./apps/neomega-viewer-r2/experiment/fixture -out /tmp/neomega-r2-static-fixture -static
 R2_URL=http://127.0.0.1:2413 node apps/neomega-viewer-r2/experiment/static-models.cjs
@@ -163,15 +167,7 @@ R2_URL=http://127.0.0.1:2413 node apps/neomega-viewer-r2/experiment/mobius.cjs
 
 `mobius.cjs` 独立验证默认场景的流式加载、协议解码、海面绘制参数、地图、拍照和关闭恢复，并在 1280×720、1920×1080 下截图，默认输出到 `/tmp/r2mobius/`。工具路径、输出与结果解释见 [验收说明](experiment/README.md)。
 
-Windows amd64 一键编译打包（需要 Go 和包含 `go.work` 的完整工作区）：
-
-```bat
-apps\neomega-viewer-r2\build-windows.cmd
-```
-
-也可双击 `build-windows.cmd`。找不到 Go 时传 `-GoCommand "C:\path\to\go.exe"`，可用 `-Version v1.0.0` 指定版本；默认记录 viewer 和渲染核心的 Git 版本。脚本固定使用 `CGO_ENABLED=0`、`GOAMD64=v1`、`-trimpath` 和 `-ldflags="-s -w"`，验证 EXE 版本、架构、符号和本机构建路径，再输出 `dist/neomega-viewer-r2-windows-amd64.exe`、同名 ZIP 和 `SHA256SUMS.txt`。ZIP 包含兼容启动脚本、EXE、许可证、使用说明和构建信息。发布的 PowerShell 脚本统一使用 UTF-8 BOM 和 CRLF，并用 Windows PowerShell 5.1 解析验证，避免中文系统将 UTF-8 误读为 ANSI。两个 CMD 入口只对自身启动的 PowerShell 进程设置执行策略，不修改系统的长期策略。
-
-其他平台或手动执行的不含调试符号构建：
+不含调试符号的发行构建：
 
 ```sh
 mkdir -p apps/neomega-viewer-r2/dist
