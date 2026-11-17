@@ -98,6 +98,12 @@ svg {
 svg .fill {
   fill: #b9d0cf;
 }
+/* 投影之类的深色块面，不描边。 */
+svg .shade {
+  fill: currentColor;
+  stroke: none;
+  opacity: 0.35;
+}
 /* 操作说明跟随主要指针类型，不占用另一套输入方式的空间。 */
 [data-input="touch"] {
   display: none;
@@ -259,7 +265,7 @@ svg .fill {
   z-index: 6;
   top: 14px;
   right: 14px;
-  width: 132px;
+  width: 176px;
   padding: 6px;
 }
 #toolbar .icon-button {
@@ -280,16 +286,24 @@ svg .fill {
   color: #0b6b6b;
   font-weight: 800;
 }
-/* 第二行四个按钮两端对齐，第三行的时间按钮与第一个（静止时累积）同列，滑块占满余下宽度。 */
+/* 两排各五格：第一排五个按钮，第二排三个按钮之后的时间滑块占满余下的两格。 */
 .tools {
   display: flex;
-  justify-content: space-between;
-}
-#time-row {
-  display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 5px;
+}
+#action-row {
   margin-top: 4px;
+}
+/* 正在编译的预览档：按钮已选中，画面仍用原来的档，直到编译完成。 */
+.tier[aria-busy="true"] {
+  animation: compiling 1s ease-in-out infinite alternate;
+}
+@keyframes compiling {
+  to {
+    opacity: 0.45;
+  }
 }
 #time {
   flex: 1;
@@ -325,7 +339,7 @@ body.hud-hidden #toolbar:hover {
 }
 body.hud-hidden #toolbar .brand,
 body.hud-hidden #toolbar .tools > :not(#eye),
-body.hud-hidden #time-row,
+body.hud-hidden #action-row,
 body.hud-hidden #photo-progress {
   display: none;
 }
@@ -645,9 +659,9 @@ dialog::backdrop {
 #link-start {
   background: #dfedeb;
 }
+/* 地图只是换了一个俯视角度，右上角面板保留，方便切换渲染器、拍摄鸟瞰图；操作提示移到左上角。 */
 body.map-open #hud,
 body.map-open #readouts,
-body.map-open #toolbar,
 body.map-open #movepad {
   display: none;
 }
@@ -655,7 +669,7 @@ body.map-open #movepad {
   position: fixed;
   z-index: 4;
   top: 14px;
-  right: 14px;
+  left: 14px;
   padding: 8px 12px;
   font-size: 11px;
 }

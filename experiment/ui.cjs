@@ -82,13 +82,13 @@ fs.mkdirSync(out + "/shots", { recursive: true });
           return [
             s.nearRadius,
             s.farRadius,
-            s.shadows,
+            s.tier,
             s.timeFlow,
             s.resolution,
             s.photoSamples,
           ];
         }),
-        [2, 32, true, true, "native", 32],
+        [2, 32, "shading", true, "native", 32],
       );
       // 固定时间保留可重复的照片，同时验证关闭动态时间后会进入累积。
       await page.click("#time-flow");

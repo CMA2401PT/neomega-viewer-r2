@@ -22,7 +22,7 @@ const settings = {
   farRadius: 32,
   resolution: "1.5",
   speed: 32,
-  shadows: true,
+  tier: "shading",
   time: 10,
   timeFlow: true,
   fog: true,
@@ -35,6 +35,15 @@ const settings = {
 // 旧版按样本数设置累积与拍照的上限，现在只有开关，不再有上限。
 delete settings.stillSamples;
 delete settings.photoSamples;
+// 旧版的阴影开关由预览渲染器的档位取代：光影渲染器总有阴影，低档没有。
+delete settings.shadows;
+/** 各档渲染器的名字；前三档用于预览，拍照与静止累积总是使用累积渲染器。 */
+const TIER_NAMES = { voxel: "体素渲染器", basic: "基础渲染器", shading: "光影渲染器", accumulation: "累积渲染器" };
+if (!["voxel", "basic", "shading"].includes(settings.tier)) settings.tier = "shading";
+// 导出画面是屏幕实际像素的 2 倍边长，每个像素 4×4 超采样；超过这个像素数时等比缩小，避免显存不足。
+const EXPORT_SCALE = 2,
+  EXPORT_SUPERSAMPLE = 4,
+  EXPORT_PIXELS = 24e6;
 const controls = new FlightControls(canvas, camera);
 bindMovePad(element("movepad"), controls);
 const registry = new ObjectRegistry().register("enchanting_book", () =>
@@ -43,6 +52,10 @@ const registry = new ObjectRegistry().register("enchanting_book", () =>
 let renderer,
   map,
   stream,
+  // 最近一帧的视图（主相机或地图俯视），拍照与导出都拍这个画面。
+  currentView = null,
+  // 画面实际使用的预览档；选中的档还在编译时沿用上一档。
+  shownTier = settings.tier,
   world = { loaded: false },
   last = performance.now(),
   statusAt = 0;
@@ -51,7 +64,7 @@ let frames = [],
   drawnAt = 0,
   continuous = false,
   photo = null,
-  // 等累积模块编译好再开始的拍照请求。
+  // 等累积渲染器编译好再开始的拍照请求。
   photoWaiting = false;
 const hud = createHUD({
   settings,
@@ -69,8 +82,11 @@ hud.error = (message) => {
 
 /** 设置持久化不参与逐帧时间推进，避免连续写入浏览器存储。 */
 function saveSettings() {
-  // 启动时这里先于渲染器创建运行；开关打开时，累积模块等渲染器就绪后再准备。
-  if (settings.stillAccumulation && renderer) prepareAccumulation();
+  // 启动时这里先于渲染器创建运行；需要的档等渲染器就绪后再编译。
+  if (renderer) {
+    compileTier(settings.tier);
+    if (settings.stillAccumulation) compileTier("accumulation");
+  }
   hud.settings();
   localStorage.setItem("neomega-r2-settings", JSON.stringify(settings));
   renderer?.resetTiming();
@@ -169,7 +185,7 @@ const showCompile = async ({ index, total, label }) => {
 };
 await startupStage("正在初始化图形设备…");
 try {
-  renderer = await createRenderer(canvas, { onProgress: showCompile });
+  renderer = await createRenderer(canvas, { tier: settings.tier, onProgress: showCompile });
   report("renderer-ready", { seconds: +((performance.now() - compileStarted) / 1000).toFixed(1) });
 } catch (error) {
   report("renderer-failed", { seconds: +((performance.now() - compileStarted) / 1000).toFixed(1), message: describe(error) });
@@ -287,47 +303,73 @@ element("texture-size").onchange = () =>
     hud.error(String(error)),
   );
 
-// 静止累积与拍照共用一个较大的射线程序，启动时不编译；第一次需要时在后台编译，期间预览照常。
+// 预览之外的各档启动时不编译；第一次需要时在后台编译，期间画面继续使用已有的档。
 const taskStatus = element("task-status");
-/** @type {Promise<void>|null} */
-let preparing = null,
-  preparingSince = 0;
-/** 准备累积模块；已在准备或已经可用时不重复。失败时提示，之后再次需要时重试。 */
-function prepareAccumulation() {
-  if (renderer.accumulationReady || preparing) return preparing ?? Promise.resolve();
-  preparingSince = performance.now();
-  report("accumulation-start");
-  preparing = renderer
-    .prepareAccumulation()
-    .then(() => report("accumulation-ready", { seconds: +((performance.now() - preparingSince) / 1000).toFixed(1) }))
+/** 正在编译的档与开始时间。 @type {Map<string,{promise:Promise<void>,since:number}>} */
+const compiling = new Map();
+/** 编译一档渲染器；已在编译或已经可用时不重复。失败时提示，之后再次需要时重试。
+ * 提示先写进页面：渲染器会等它显示出来再开始编译，Windows 上编译期间页面可能停止刷新。
+ * @param {"voxel"|"basic"|"shading"|"accumulation"} tier
+ */
+function compileTier(tier) {
+  if (renderer.ready(tier)) return Promise.resolve();
+  const existing = compiling.get(tier);
+  if (existing) return existing.promise;
+  const since = performance.now(),
+    seconds = () => +((performance.now() - since) / 1000).toFixed(1);
+  report("compile-start", { tier });
+  const promise = renderer
+    .compile(tier)
+    .then(() => report("compile-ready", { tier, seconds: seconds() }))
     .catch((error) => {
-      report("accumulation-failed", { seconds: +((performance.now() - preparingSince) / 1000).toFixed(1), message: describe(error) });
-      photoWaiting = false;
-      setPhotoButton(false);
-      hud.error(`更复杂光线处理的模块准备失败：${error.message || error}`);
+      report("compile-failed", { tier, seconds: seconds(), message: describe(error) });
+      if (tier === "accumulation") {
+        photoWaiting = false;
+        setPhotoButton();
+      }
+      hud.error(`${TIER_NAMES[tier]}准备失败：${error.message || error}`);
       throw error;
     })
     .finally(() => {
-      preparing = null;
+      compiling.delete(tier);
       drawn = "";
+      showTaskStatus(performance.now());
     });
-  preparing.catch(() => {});
-  return preparing;
+  promise.catch(() => {});
+  compiling.set(tier, { promise, since });
+  showTaskStatus(since);
+  return promise;
 }
-/** 底部提示：模块准备进度，或拍照时的操作说明。 */
+/** 底部提示：渲染器编译进度，或拍照、导出时的操作说明。 */
 function showTaskStatus(now) {
+  const preview = compiling.get(settings.tier),
+    accumulation = compiling.get("accumulation"),
+    elapsed = (job) => `已用 ${Math.floor((now - job.since) / 1000)} 秒`;
   const text = photo
-    ? `拍照中 · 已累积 ${photo.samples} 样本，画面会越来越干净 · 满意时再按相机按钮保存，按 Esc 放弃`
-    : preparing && (settings.stillAccumulation || photoWaiting)
-      ? `正在准备支持更复杂光线处理的模块，比较耗时，需要 1～2 分钟 · 已用 ${Math.floor((now - preparingSince) / 1000)} 秒${photoWaiting ? " · 准备好后自动开始拍照，再按相机按钮取消" : ""}`
-      : "";
+    ? photo.kind === "export"
+      ? `正在导出 · ${photo.samples}/${EXPORT_SUPERSAMPLE ** 2} 轮超采样，完成后自动保存 · 再按导出按钮或 Esc 取消`
+      : `拍照中 · 已累积 ${photo.samples} 样本，画面会越来越干净 · 满意时再按相机按钮保存，按 Esc 放弃`
+    : preview
+      ? `正在编译${TIER_NAMES[settings.tier]}，期间画面可能停顿 · ${elapsed(preview)}${shownTier !== settings.tier ? ` · 完成前继续使用${TIER_NAMES[shownTier]}` : ""}`
+      : accumulation && (settings.stillAccumulation || photoWaiting)
+        ? `正在编译累积渲染器，比较耗时，需要 1～2 分钟，期间画面可能停顿 · ${elapsed(accumulation)}${photoWaiting ? " · 准备好后自动开始拍照，再按相机按钮取消" : ""}`
+        : "";
   if (taskStatus.textContent !== text) taskStatus.textContent = text;
   taskStatus.hidden = !text;
+  for (const button of document.querySelectorAll(".tier"))
+    button.setAttribute("aria-busy", String(compiling.has(button.dataset.tier)));
 }
-/** @param {boolean} active */
-function setPhotoButton(active) {
-  element("photo").setAttribute("aria-pressed", String(active));
-  element("photo").title = element("photo").ariaLabel = photo ? "保存照片" : active ? "取消拍照" : "拍照";
+/** 拍照与导出两个按钮的状态：进行中的一项按下，另一项停用。 */
+function setPhotoButton() {
+  const kind = photo?.kind ?? (photoWaiting ? "photo" : null);
+  element("photo").setAttribute("aria-pressed", String(kind === "photo"));
+  element("photo").title = element("photo").ariaLabel =
+    photo?.kind === "photo" ? "保存照片" : photoWaiting ? "取消拍照" : "拍照（累积渲染器）";
+  element("photo").disabled = kind === "export";
+  element("export").setAttribute("aria-pressed", String(kind === "export"));
+  element("export").title = element("export").ariaLabel =
+    kind === "export" ? "取消导出" : "导出当前画面：用当前预览渲染器以 2 倍尺寸、4×4 超采样重新渲染";
+  element("export").disabled = kind === "photo";
   element("photo-progress").hidden = !photo;
 }
 // 拍照使用独立缓冲，不把 HUD 或标记写入照片。按下后画面上实时显示照片逐渐收敛，再按一次保存。
@@ -335,39 +377,64 @@ element("photo").onclick = () => {
   if (photo) return finishPhoto(true);
   if (photoWaiting) {
     photoWaiting = false;
-    return setPhotoButton(false);
+    return setPhotoButton();
   }
-  if (renderer.accumulationReady) return startPhoto();
+  if (renderer.ready("accumulation")) return startPhoto("photo");
   photoWaiting = true;
-  setPhotoButton(true);
-  prepareAccumulation().then(() => {
-    if (photoWaiting) startPhoto();
+  setPhotoButton();
+  compileTier("accumulation").then(() => {
+    if (photoWaiting) startPhoto("photo");
   }, () => {});
+};
+// 导出用当前预览档按固定网格超采样重画当前画面，取满后自动保存；进行中再按一次取消。
+element("export").onclick = () => {
+  if (photo) return cancelPhoto();
+  startPhoto("export");
 };
 addEventListener("keydown", (event) => {
   if (event.key === "Escape" && (photo || photoWaiting)) cancelPhoto();
 });
-function startPhoto() {
+/** 拍照总是用累积渲染器，尺寸为渲染画面乘照片倍数；导出用当前预览档，尺寸为屏幕实际像素的 2 倍。
+ * 两者都拍最近一帧的视图，地图打开时就是俯视画面。
+ * @param {"photo"|"export"} kind
+ */
+function startPhoto(kind) {
   photoWaiting = false;
-  const scale = renderScale() * settings.photoScale;
-  photo = renderer.photograph(camera, {
-    width: Math.round(innerWidth * scale),
-    height: Math.round(innerHeight * scale),
+  if (!currentView) return;
+  let width, height;
+  if (kind === "photo") {
+    const scale = renderScale() * settings.photoScale;
+    width = innerWidth * scale;
+    height = innerHeight * scale;
+  } else {
+    const gl = renderer.gl,
+      limit = Math.min(gl.getParameter(gl.MAX_TEXTURE_SIZE), gl.getParameter(gl.MAX_RENDERBUFFER_SIZE));
+    width = innerWidth * devicePixelRatio * EXPORT_SCALE;
+    height = innerHeight * devicePixelRatio * EXPORT_SCALE;
+    const shrink = Math.min(1, limit / Math.max(width, height), Math.sqrt(EXPORT_PIXELS / (width * height)));
+    width *= shrink;
+    height *= shrink;
+  }
+  photo = renderer.photograph(currentView.camera, {
+    width: Math.round(width),
+    height: Math.round(height),
+    ...(kind === "export" ? { tier: shownTier, supersample: EXPORT_SUPERSAMPLE } : {}),
     time: performance.now() / 1000,
-    shadows: settings.shadows,
     sun: sunDirection(settings.time),
     ...(world.scene ? { ocean: world.scene.ocean } : {}),
-    fog: settings.fog ? settings.farRadius * 16 : Infinity,
+    fog: currentView.fog,
+    objects: currentView.objects,
   });
-  photo.name = `${world.name || "天空"}-${new Date().toTimeString().slice(0, 8).replaceAll(":", "")}.png`;
-  setPhotoButton(true);
+  photo.kind = kind;
+  photo.name = `${world.name || "天空"}-${new Date().toTimeString().slice(0, 8).replaceAll(":", "")}${kind === "export" ? `-${shownTier}` : ""}.png`;
+  setPhotoButton();
   showTaskStatus(performance.now());
 }
 /** 放弃正在进行或正在等待的拍照。 */
 function cancelPhoto() {
   photoWaiting = false;
   if (photo) return finishPhoto(false);
-  setPhotoButton(false);
+  setPhotoButton();
 }
 /** 保存时下载，放弃时直接释放照片缓冲；编码期间继续冻结场景。
  * @param {boolean} download
@@ -386,7 +453,8 @@ async function finishPhoto(download) {
   job.dispose();
   photo = null;
   drawn = "";
-  setPhotoButton(false);
+  setPhotoButton();
+  showTaskStatus(performance.now());
 }
 
 let pageID = 0, command = 0, eventQueue = Promise.resolve(), sentView = "", viewAt = 0, viewBusy = false;
@@ -454,17 +522,22 @@ function frame(now) {
     if (photo.finishing) return;
     photo.step();
     photo.present();
-    element("photo-progress").textContent = `${photo.samples} 样本`;
+    element("photo-progress").textContent = photo.kind === "export"
+      ? `${photo.samples}/${EXPORT_SUPERSAMPLE ** 2}`
+      : `${photo.samples} 样本`;
+    if (photo.complete) finishPhoto(true);
     if (now - statusAt > 100) {
       statusAt = now;
-      element("fps").textContent = "拍照中";
+      element("fps").textContent = photo.kind === "export" ? "导出中" : "拍照中";
     }
     return;
   }
   const view = map.frame(settings);
+  currentView = view;
+  if (renderer.ready(settings.tier)) shownTier = settings.tier;
   controls.enabled = view.objects;
   controls.update(dt, Number(settings.speed));
-  if (settings.shadows && settings.timeFlow) {
+  if (settings.timeFlow) {
     settings.time = (settings.time + (dt * 24) / 240) % 24;
     hud.settings();
   }
@@ -481,7 +554,7 @@ function frame(now) {
     view,
     width,
     height,
-    settings.shadows,
+    shownTier,
     settings.fog,
     sun,
     renderer.version,
@@ -493,14 +566,14 @@ function frame(now) {
     (objects && renderer.animating(view.camera, { width, height }));
   let rendered = false;
   // 静止时一直累积，直到画面再次变化；没有样本上限。
-  const accumulating = settings.stillAccumulation && renderer.accumulationReady;
+  const accumulating = settings.stillAccumulation && renderer.ready("accumulation");
   if (!view.overview && (changed || accumulating)) {
     rendered = renderer.draw(view.camera, {
       width,
       height,
+      tier: shownTier,
       accumulate: !changed,
       time: now / 1000,
-      shadows: settings.shadows,
       sun,
       ...(world.scene ? { ocean: world.scene.ocean } : {}),
       fog: view.fog,
@@ -536,6 +609,7 @@ function frame(now) {
       element("height-diagnostics").textContent = `有 ${clipped} 个 section 超出可显示高度（Y -64～447，${world.kind === "connection" ? "按当前保留区块统计" : "按已读取区块统计"}）`;
       hud.details([
         ["来源", world.kind === "connection" ? "连接" : world.kind || "内置场景"],
+        ["预览渲染器", TIER_NAMES[shownTier]],
         ...(world.connection ? [
           ["供给方式", world.connection.delivery || "握手中"],
           ["来源维度 / 高度", `${world.dimension} · [${world.minY}, ${world.minY + world.height})`],
@@ -587,7 +661,7 @@ for (const delay of [15000, 60000])
       world: world.kind || "mobius",
     });
   }, delay);
-if (settings.stillAccumulation) prepareAccumulation();
+if (settings.stillAccumulation) compileTier("accumulation");
 window.addEventListener("pagehide", () => {
   stream?.dispose();
   renderer.dispose();

@@ -66,6 +66,33 @@
           d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"
         />
       </symbol>
+      <!-- 三档预览：体素是分成小格的纯色块，基础是带贴图的方块，光影是投下影子的方块。 -->
+      <symbol id="i-voxel" viewBox="0 0 24 24">
+        <path class="fill" d="M12 3 20 7.5v9L12 21 4 16.5v-9Z" />
+        <path d="M4 7.5 12 12l8-4.5M12 12v9" />
+        <path
+          stroke-width="1.1"
+          d="M16 5.25 8 9.75M8 5.25l8 4.5M8 9.75v9M4 12l8 4.5M16 9.75v9M12 16.5l8-4.5"
+        />
+      </symbol>
+      <symbol id="i-basic" viewBox="0 0 24 24">
+        <path class="fill" d="M12 3 20 7.5 12 12 4 7.5Z" />
+        <path d="M12 3 20 7.5v9L12 21 4 16.5v-9ZM4 7.5 12 12l8-4.5M12 12v9" />
+        <path d="M6.8 12.6v1.6M9.4 15.6v1.6M14.6 14.4v1.6M17.2 11.4v1.6" />
+      </symbol>
+      <symbol id="i-shading" viewBox="0 0 24 24">
+        <path class="shade" d="M14 16.6 20.5 19.8 15.5 22.3 9 19.1Z" />
+        <path class="fill" d="M9 8.5 14 11v5.6L9 19.1 4 16.6V11Z" />
+        <path d="M4 11 9 13.5 14 11M9 13.5v5.6" />
+        <circle cx="18" cy="6" r="2.2" />
+        <path d="M18 1.6v.9M18 9.5v.9M13.6 6h.9M21.5 6h.9M14.9 2.9l.6.6M20.5 8.5l.6.6M14.9 9.1l.6-.6M20.5 3.5l.6-.6" />
+      </symbol>
+      <symbol id="i-export" viewBox="0 0 24 24">
+        <path class="fill" d="M3 5.5h12.5v11H3Z" />
+        <path d="m3 14 3.8-3.8 3 3 2.2-2.2 3.5 3.5" />
+        <circle cx="11.3" cy="8.6" r="1.1" />
+        <path d="M19.5 7.5v12M16 16l3.5 3.5L23 16" />
+      </symbol>
       <symbol id="i-accumulate" viewBox="0 0 24 24">
         <path class="fill" d="M12 3.5 21 8l-9 4.5L3 8Z" />
         <path d="m3 12 9 4.5 9-4.5M3 16l9 4.5 9-4.5" />
@@ -99,8 +126,33 @@
     </section>
     <aside id="toolbar" class="panel">
       <div class="brand">neOmega <b>R2</b></div>
-      <div class="tools">
+      <!-- 第一排：前三个按钮三选一，决定预览用哪档绘制器；随后是静止时累积与隐藏 HUD。 -->
+      <div class="tools" role="group" aria-label="预览绘制器">
         <button
+          class="icon-button tier"
+          data-tier="voxel"
+          title="体素渲染器：纯色方块，最省性能"
+          aria-label="体素渲染器"
+          aria-pressed="false"
+        >
+          <svg><use href="#i-voxel" /></svg></button
+        ><button
+          class="icon-button tier"
+          data-tier="basic"
+          title="基础渲染器：完整方块与贴图，无阴影、雾与水面效果"
+          aria-label="基础渲染器"
+          aria-pressed="false"
+        >
+          <svg><use href="#i-basic" /></svg></button
+        ><button
+          class="icon-button tier"
+          data-tier="shading"
+          title="光影渲染器：阴影、远景雾、水面波纹与反射"
+          aria-label="光影渲染器"
+          aria-pressed="true"
+        >
+          <svg><use href="#i-shading" /></svg></button
+        ><button
           id="still-accumulation"
           class="icon-button"
           title="静止时累积"
@@ -114,25 +166,26 @@
           title="隐藏 HUD"
           aria-label="隐藏 HUD"
         >
-          <svg><use href="#i-eye" /></svg></button
+          <svg><use href="#i-eye" /></svg>
+        </button>
+      </div>
+      <!-- 第二排：导出当前画面、拍照、时间流逝，时间滑块占两格。 -->
+      <div id="action-row" class="tools">
+        <button
+          id="export"
+          class="icon-button"
+          title="导出当前画面：用当前预览渲染器以 2 倍尺寸、4×4 超采样重新渲染"
+          aria-label="导出当前画面"
+          aria-pressed="false"
+        >
+          <svg><use href="#i-export" /></svg></button
         ><button id="photo" class="icon-button" title="拍照" aria-label="拍照">
           <svg><use href="#i-camera" /></svg></button
         ><button
-          id="shadows"
-          class="icon-button"
-          title="阴影"
-          aria-label="阴影"
-          aria-pressed="true"
-        >
-          <svg><use href="#i-sun" /></svg>
-        </button>
-      </div>
-      <div id="time-row">
-        <button
           id="time-flow"
           class="icon-button"
-          title="动态时间"
-          aria-label="动态时间"
+          title="时间流逝"
+          aria-label="时间流逝"
           aria-pressed="true"
         >
           <svg><use href="#i-flow" /></svg></button
@@ -299,7 +352,7 @@
         >远景雾<input id="fog" class="switch" type="checkbox"
       /></label>
       <p class="hint">
-        远景雾淡化窗口边界。右上角第一个按钮是静止时累积：静止时画面持续变干净，移动后重新开始，第一次开启要准备一个较耗时的模块；它与动态时间互斥。
+        远景雾淡化窗口边界，只在光影渲染器中出现。右上角第一排前三个按钮选择预览用的渲染器：体素、基础、光影，第一次切换到某一档时需要编译。之后是静止时累积：静止时用累积渲染器让画面持续变干净，移动后重新开始，第一次开启要准备一个较耗时的模块；它与时间流逝互斥。
       </p>
       <label class="setting"
         >照片尺寸<select id="photo-scale">
@@ -307,7 +360,7 @@
           <option value="2">渲染画面 2×</option>
         </select></label
       >
-      <p class="hint">按相机按钮开始拍照，画面逐渐变干净；满意时再按一次保存 PNG，按 Esc 放弃。</p>
+      <p class="hint">拍照总是使用累积渲染器：按相机按钮开始，画面逐渐变干净，满意时再按一次保存 PNG，按 Esc 放弃。导出按钮用当前预览渲染器以 2 倍屏幕尺寸、4×4 超采样重新渲染，完成后自动保存。</p>
       <label class="setting"
         >移动速度<select id="speed">
           <option value="16">16 方块 / 秒</option>

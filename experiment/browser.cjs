@@ -91,7 +91,7 @@ fs.mkdirSync(out, { recursive: true });
           height: 720,
           time: 0,
           objects,
-          shadows: settings.shadows,
+          tier: settings.tier,
           sun: [Math.cos(angle), Math.sin(angle), 0.3],
           fog: settings.fog ? settings.farRadius * 16 : Infinity,
         });

@@ -50,7 +50,7 @@ async function send(message) {
     };
     const pick = async (x=8.5,z=8.5) => page.evaluate(([x,z])=>viewerR2.renderer.pick({position:[x,200,z],yaw:0,pitch:-Math.PI/2,ortho:16},{width:101,height:101,x:50,y:50}),[x,z]);
     const pixels = async () => page.evaluate(()=>{
-      const r=viewerR2.renderer;r.draw(viewerR2.state.camera,{width:1280,height:720,time:0,objects:false,shadows:false,sun:[0,1,0],fog:Infinity});
+      const r=viewerR2.renderer;r.draw(viewerR2.state.camera,{width:1280,height:720,time:0,objects:false,sun:[0,1,0],fog:Infinity});
       const p=r.pixels();let text="";for(let i=0;i<p.length;i+=8192)text+=String.fromCharCode(...p.subarray(i,i+8192));return btoa(text);
     });
     const updated = async (message, expectedY) => {

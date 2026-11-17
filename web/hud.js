@@ -4,7 +4,7 @@
  * @property {number} farRadius
  * @property {string} resolution
  * @property {number} speed
- * @property {boolean} shadows
+ * @property {"voxel"|"basic"|"shading"} tier 预览用的绘制器
  * @property {number} time
  * @property {boolean} timeFlow
  * @property {boolean} fog
@@ -101,8 +101,12 @@ export function createHUD({ settings, jump, changed }) {
   // 静止时累积与动态时间互斥：时间在走画面就一直在变，累积不起来。打开其中一个时关掉另一个。
   const exclusive = { stillAccumulation: "timeFlow", timeFlow: "stillAccumulation" };
   if (settings.stillAccumulation && settings.timeFlow) settings.stillAccumulation = false;
+  for (const button of document.querySelectorAll(".tier"))
+    button.onclick = () => {
+      settings.tier = button.dataset.tier;
+      changed();
+    };
   for (const [id, key] of [
-    ["shadows", "shadows"],
     ["time-flow", "timeFlow"],
     ["still-accumulation", "stillAccumulation"],
   ])
@@ -127,12 +131,12 @@ export function createHUD({ settings, jump, changed }) {
       element("near-value").textContent = `${settings.nearRadius} 区块`;
       element("far-value").textContent = `${settings.farRadius} 区块`;
       for (const [id, key] of [
-        ["shadows", "shadows"],
         ["time-flow", "timeFlow"],
         ["still-accumulation", "stillAccumulation"],
       ])
         element(id).setAttribute("aria-pressed", String(settings[key]));
-      element("time-row").hidden = !settings.shadows;
+      for (const button of document.querySelectorAll(".tier"))
+        button.setAttribute("aria-pressed", String(button.dataset.tier === settings.tier));
       // 面板不显示时刻文字，悬停滑块时仍能看到具体时间。
       const minutes = Math.floor(settings.time * 60) % 1440;
       element("time").title =
