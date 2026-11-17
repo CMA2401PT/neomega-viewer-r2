@@ -193,14 +193,15 @@ export class FullscreenMap {
       position: this.center.map((v, i) => v - forward[i] * distance),
     };
   }
-  /** 长边在水平参考面上的跨度决定是否超出远景窗口。
+  /** 画面在水平参考面上的长边超过远景直径（farRadius × 2 区块）的 √2 倍时，改为区块占用图。
+   * 阈值随远景半径变化，不是常数。
    * @param {number} farRadius
    */
   overview(farRadius) {
     return (
       this.span *
         Math.max(innerWidth / innerHeight, 1 / Math.abs(Math.sin(this.pitch))) >
-      farRadius * 32
+      farRadius * 32 * Math.SQRT2
     );
   }
   /** 每个会话仅获取一次目录位图；新会话替换整份索引。
