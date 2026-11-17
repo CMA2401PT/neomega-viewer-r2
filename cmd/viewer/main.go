@@ -10,9 +10,9 @@ import (
 	"io/fs"
 	"log"
 	"neomega-converter-core/structure"
-	r2 "neomega-r2"
 	"neomega-r2/blockactor"
 	"neomega-r2/effector"
+	"neomega-view-utils/r2assets"
 	app "neomega-viewer-r2"
 	"neomega-viewer-r2/internal/desktop"
 	"neomega-viewer-r2/internal/server"
@@ -85,7 +85,7 @@ func run() error {
 	progress := desktop.Progress{Out: output, Colored: colored}
 	progress.Step("准备中…")
 	progress.Step("读取模型目录…")
-	catalog, err := r2.OpenCatalog()
+	catalog, err := r2assets.OpenCatalog()
 	if err != nil {
 		return err
 	}

@@ -11,7 +11,7 @@ import (
 	"neomega-converter-core/be2je/adapt"
 	"neomega-converter-core/worldinput"
 	fixedadapt "neomega-converter/adapt"
-	"neomega-viewer-core/fixer/java-postprocess"
+	"neomega-view-utils/fixer/java-postprocess"
 	"neomega-viewer-r2/internal/worlddata"
 )
 

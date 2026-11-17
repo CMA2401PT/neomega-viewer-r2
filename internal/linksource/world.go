@@ -18,7 +18,7 @@ import (
 	"neomega-r2/blockactor"
 	"neomega-r2/effector"
 	"neomega-r2/object"
-	fixer "neomega-viewer-core/fixer/java-postprocess"
+	fixer "neomega-view-utils/fixer/java-postprocess"
 	"neomega-viewer-r2/internal/worlddata"
 	"neomega-viewer-r2/r2link"
 )

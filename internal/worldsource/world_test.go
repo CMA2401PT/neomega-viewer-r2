@@ -9,7 +9,7 @@ import (
 	"neomega-blocks/ir"
 	"neomega-converter-core/worldinput"
 	nbt "neomega-nbt/presets/v1"
-	r2 "neomega-r2"
+	"neomega-view-utils/r2assets"
 	"neomega-viewer-r2/internal/worlddata"
 	"testing"
 )
@@ -42,7 +42,7 @@ func TestWorldPaletteTransport(t *testing.T) {
 	if err = source.Close(); err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := r2.OpenCatalog()
+	catalog, err := r2assets.OpenCatalog()
 	if err != nil {
 		t.Fatal(err)
 	}

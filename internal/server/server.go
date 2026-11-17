@@ -13,6 +13,7 @@ import (
 	"neomega-r2/blockactor"
 	"neomega-r2/effector"
 	"neomega-r2/object"
+	"neomega-view-utils/r2assets"
 	"neomega-viewer-r2/internal/filebrowse"
 	"neomega-viewer-r2/internal/linksource"
 	"neomega-viewer-r2/internal/mobius"
@@ -243,7 +244,7 @@ func (s *Server) Handler(web fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/events", s.events)
 	mux.HandleFunc("POST /api/world/view", s.view)
 	mux.HandleFunc("POST /api/world/connect", s.connect)
-	assets, _ := fs.Sub(r2.Files, "assets")
+	assets, _ := fs.Sub(r2assets.Files, "assets")
 	core, _ := fs.Sub(r2.Files, "dist")
 	mux.Handle("/r2/assets/", http.StripPrefix("/r2/assets/", http.FileServerFS(assets)))
 	mux.Handle("/r2/", http.StripPrefix("/r2/", http.FileServerFS(core)))
@@ -299,7 +300,7 @@ func (s *Server) Handler(web fs.FS) http.Handler {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		textures, err := r2.BuildTextures(request.Path, request.MaxSize)
+		textures, err := r2assets.BuildTextures(request.Path, request.MaxSize)
 		if err != nil {
 			http.Error(w, err.Error(), 400)
 			return

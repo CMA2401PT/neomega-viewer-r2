@@ -19,10 +19,10 @@ import (
 
 	"neomega-blocks/ir"
 	nbt "neomega-nbt/presets/v1"
-	r2 "neomega-r2"
 	"neomega-r2/blockactor"
 	"neomega-r2/effector"
 	"neomega-r2/object"
+	"neomega-view-utils/r2assets"
 	"neomega-viewer-r2/internal/worlddata"
 )
 
@@ -65,7 +65,7 @@ func TestSessionAndNearObjectBoundary(t *testing.T) {
 	if err = source.Close(); err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := r2.OpenCatalog()
+	catalog, err := r2assets.OpenCatalog()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestWorldChunks(t *testing.T) {
 
 // 内置场景沿用区域协议与地图占用协议，关闭后只更换会话编号，不改变场景内容。
 func TestMobiusSession(t *testing.T) {
-	catalog, err := r2.OpenCatalog()
+	catalog, err := r2assets.OpenCatalog()
 	if err != nil {
 		t.Fatal(err)
 	}

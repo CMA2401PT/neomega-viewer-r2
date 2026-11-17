@@ -10,7 +10,7 @@ require (
 	neomega-converter-core v0.0.0
 	neomega-nbt v0.0.0
 	neomega-r2 v0.0.0
-	neomega-viewer-core v0.0.0
+	neomega-view-utils v0.0.0
 )
 
 require (
@@ -35,4 +35,4 @@ replace neomega-converter-core => ../../neomega-converter-core
 
 replace neomega-converter => ../neomega-converter
 
-replace neomega-viewer-core => ../../neomega-viewer-core
+replace neomega-view-utils => ../../neomega-view-utils
