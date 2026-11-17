@@ -389,6 +389,10 @@ element("texture-size").onchange = () =>
 const taskStatus = element("task-status");
 /** 正在编译的档与开始时间。 @type {Map<string,{promise:Promise<void>,since:number}>} */
 const compiling = new Map();
+// 程序链接完成后，驱动仍可能在第一次实际绘制时耗时数秒。
+let firstStillFrameReady = false;
+/** 首次静止累积绘制之后插入的 GPU 栅栏。 @type {WebGLSync|null} */
+let firstStillFrameFence = null;
 /** 编译一档渲染器；已在编译或已经可用时不重复。失败时提示，之后再次需要时重试。
  * 提示先写进页面：渲染器会等它显示出来再开始编译，Windows 上编译期间页面可能停止刷新。
  * @param {"voxel"|"basic"|"shading"|"accumulation"} tier
@@ -430,12 +434,16 @@ function showTaskStatus(now) {
   const text = photo
     ? photo.kind === "export"
       ? `正在导出 · ${photo.samples}/${EXPORT_SUPERSAMPLE ** 2} 轮超采样，完成后自动保存 · 再按导出按钮或 Esc 取消`
-      : `拍照中 · 已累积 ${photo.samples} 样本，画面会越来越干净 · 满意时再按相机按钮保存，按 Esc 放弃`
+      : photo.samples === 0
+        ? "正在绘制首个拍照样本 · 按 Esc 放弃"
+        : `拍照中 · 已累积 ${photo.samples} 样本，画面会越来越干净 · 满意时再按相机按钮保存，按 Esc 放弃`
     : preview
       ? `正在编译${TIER_NAMES[settings.tier]}，期间画面可能停顿 · ${elapsed(preview)}${shownTier !== settings.tier ? ` · 完成前继续使用${TIER_NAMES[shownTier]}` : ""}`
       : accumulation && (settings.stillAccumulation || photoWaiting)
-        ? `正在编译累积渲染器，比较耗时，需要 1～2 分钟，期间画面可能停顿 · ${elapsed(accumulation)}${photoWaiting ? " · 准备好后自动开始拍照，再按相机按钮取消" : ""}`
-        : "";
+        ? `正在编译累积渲染器 · ${elapsed(accumulation)}${photoWaiting ? " · 准备好后自动开始拍照，再按相机按钮取消" : ""}`
+        : settings.stillAccumulation && renderer.ready("accumulation") && !firstStillFrameReady && !map.isOverview
+          ? "正在准备首个累积画面 · 视角静止时开始绘制"
+          : "";
   if (taskStatus.textContent !== text) taskStatus.textContent = text;
   taskStatus.hidden = !text;
   for (const button of document.querySelectorAll(".tier"))
@@ -546,6 +554,13 @@ function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
+  const gl = renderer.gl;
+  if (firstStillFrameFence && gl.getSyncParameter(firstStillFrameFence, gl.SYNC_STATUS) === gl.SIGNALED) {
+    gl.deleteSync(firstStillFrameFence);
+    firstStillFrameFence = null;
+    firstStillFrameReady = true;
+    report("accumulation-first-frame-ready");
+  }
   if (now - statusAt > 100) showTaskStatus(now);
   if (photo) {
     if (photo.finishing) return;
@@ -595,7 +610,8 @@ function frame(now) {
   let rendered = false;
   // 静止时一直累积，直到画面再次变化；没有样本上限。
   const accumulating = settings.stillAccumulation && renderer.ready("accumulation");
-  if (!view.overview && (changed || accumulating)) {
+  if (!view.overview && (changed || (accumulating && !firstStillFrameFence))) {
+    if (!changed && !firstStillFrameReady) report("accumulation-first-frame-start");
     rendered = renderer.draw(view.camera, {
       width,
       height,
@@ -607,6 +623,10 @@ function frame(now) {
       fog: view.fog,
       objects,
     });
+    if (rendered && !changed && !firstStillFrameReady) {
+      firstStillFrameFence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+      gl.flush();
+    }
     if (rendered && session?.stats.loaded > 0) finishStartup();
   }
   if (changed) {
@@ -687,6 +707,7 @@ for (const delay of [15000, 60000])
   }, delay);
 if (settings.stillAccumulation) compileTier("accumulation");
 window.addEventListener("pagehide", () => {
+  if (firstStillFrameFence) renderer.gl.deleteSync(firstStillFrameFence);
   session?.dispose();
   renderer.dispose();
 });
