@@ -66,6 +66,10 @@
           d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"
         />
       </symbol>
+      <symbol id="i-accumulate" viewBox="0 0 24 24">
+        <path class="fill" d="M12 3.5 21 8l-9 4.5L3 8Z" />
+        <path d="m3 12 9 4.5 9-4.5M3 16l9 4.5 9-4.5" />
+      </symbol>
       <symbol id="i-flow" viewBox="0 0 24 24">
         <circle class="fill" cx="12" cy="12" r="8.5" />
         <path d="M12 6.5V12l4 2M5 21v-5h5" />
@@ -93,6 +97,14 @@
       <div class="brand">neOmega <b>R2</b></div>
       <div class="tools">
         <button
+          id="still-accumulation"
+          class="icon-button"
+          title="静止时累积"
+          aria-label="静止时累积"
+          aria-pressed="false"
+        >
+          <svg><use href="#i-accumulate" /></svg></button
+        ><button
           id="eye"
           class="icon-button"
           title="隐藏 HUD"
@@ -280,13 +292,10 @@
         </select></label
       >
       <label class="setting"
-        >静止时累积<input id="still-accumulation" class="switch" type="checkbox"
-      /></label>
-      <label class="setting"
         >远景雾<input id="fog" class="switch" type="checkbox"
       /></label>
       <p class="hint">
-        静止时持续累积，软影、反光与边缘越来越干净，移动后重新开始；第一次开启要准备一个较耗时的模块。远景雾淡化窗口边界。
+        远景雾淡化窗口边界。右上角第一个按钮是静止时累积：静止时画面持续变干净，移动后重新开始，第一次开启要准备一个较耗时的模块；它与动态时间互斥。
       </p>
       <label class="setting"
         >照片尺寸<select id="photo-scale">

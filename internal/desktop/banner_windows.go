@@ -91,7 +91,7 @@ func LaunchApp(address, angle string) string {
 	if profile := ensureProfile(profileName); profile != "" {
 		args = append(args, "--user-data-dir="+profile)
 	}
-	args = append(args, "--no-first-run", "--window-size=1366,800", "--app="+address)
+	args = append(args, "--no-first-run", "--window-size=1240,840", "--app="+address)
 	command := exec.Command(browser, args...)
 	if err := command.Start(); err != nil {
 		OpenBrowser(address)

@@ -82,7 +82,6 @@ export function createHUD({ settings, jump, changed }) {
     ["resolution", "resolution"],
     ["speed", "speed"],
     ["fog", "fog"],
-    ["still-accumulation", "stillAccumulation"],
     ["photo-scale", "photoScale"],
     ["time", "time"],
   ]) {
@@ -99,12 +98,17 @@ export function createHUD({ settings, jump, changed }) {
       changed();
     });
   }
+  // 静止时累积与动态时间互斥：时间在走画面就一直在变，累积不起来。打开其中一个时关掉另一个。
+  const exclusive = { stillAccumulation: "timeFlow", timeFlow: "stillAccumulation" };
+  if (settings.stillAccumulation && settings.timeFlow) settings.stillAccumulation = false;
   for (const [id, key] of [
     ["shadows", "shadows"],
     ["time-flow", "timeFlow"],
+    ["still-accumulation", "stillAccumulation"],
   ])
     element(id).onclick = () => {
       settings[key] = !settings[key];
+      if (settings[key] && exclusive[key]) settings[exclusive[key]] = false;
       changed();
     };
   element("resolution").options[0].textContent =
@@ -125,6 +129,7 @@ export function createHUD({ settings, jump, changed }) {
       for (const [id, key] of [
         ["shadows", "shadows"],
         ["time-flow", "timeFlow"],
+        ["still-accumulation", "stillAccumulation"],
       ])
         element(id).setAttribute("aria-pressed", String(settings[key]));
       element("time-row").hidden = !settings.shadows;

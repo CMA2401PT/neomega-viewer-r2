@@ -66,11 +66,14 @@ button {
   white-space: nowrap;
 }
 button:hover:not(:disabled) {
-  background: #e9efef;
+  background: #d3e1e1;
 }
 button:active:not(:disabled),
 button[aria-pressed="true"] {
-  background: #dbe9e8;
+  background: #a9cbc8;
+}
+button[aria-pressed="true"]:hover:not(:disabled) {
+  background: #9cc2bf;
 }
 button:disabled {
   opacity: 0.3;
@@ -93,7 +96,7 @@ svg {
   flex-shrink: 0;
 }
 svg .fill {
-  fill: #dce7e7;
+  fill: #b9d0cf;
 }
 /* 操作说明跟随主要指针类型，不占用另一套输入方式的空间。 */
 [data-input="touch"] {
@@ -235,12 +238,12 @@ svg .fill {
   z-index: 6;
   top: 14px;
   right: 14px;
-  width: 100px;
+  width: 132px;
   padding: 6px;
 }
 #toolbar .icon-button {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   padding: 4px;
 }
 #toolbar svg {
@@ -256,7 +259,7 @@ svg .fill {
   color: #0b6b6b;
   font-weight: 800;
 }
-/* 第二行三个按钮两端对齐，第三行的时间按钮与第一个按钮同列，滑块占满余下宽度。 */
+/* 第二行四个按钮两端对齐，第三行的时间按钮与第一个（静止时累积）同列，滑块占满余下宽度。 */
 .tools {
   display: flex;
   justify-content: space-between;
