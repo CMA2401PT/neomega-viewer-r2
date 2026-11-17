@@ -229,17 +229,27 @@ svg .fill {
 #loading.faded {
   opacity: 0;
 }
+/* 右上角面板尽量窄，少挡画面；按钮与标题随之缩小。 */
 #toolbar {
   position: fixed;
   z-index: 6;
   top: 14px;
   right: 14px;
-  width: 164px;
-  padding: 8px;
+  width: 100px;
+  padding: 6px;
+}
+#toolbar .icon-button {
+  width: 26px;
+  height: 26px;
+  padding: 4px;
+}
+#toolbar svg {
+  width: 18px;
+  height: 18px;
 }
 .brand {
-  font-size: 16px;
-  padding: 0 3px 6px;
+  font-size: 12px;
+  padding: 0 2px 5px;
   letter-spacing: 0.1px;
 }
 .brand b {
@@ -254,7 +264,7 @@ svg .fill {
 #time-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-top: 4px;
 }
 #time {
@@ -505,6 +515,18 @@ input[type="range"] {
   margin: 0;
   text-align: right;
   font-family: var(--mono);
+}
+/* 累积模块准备进度与拍照说明，位置在错误提示之上。 */
+#task-status {
+  position: fixed;
+  z-index: 19;
+  left: 50%;
+  bottom: 130px;
+  transform: translateX(-50%);
+  padding: 9px 15px;
+  max-width: min(620px, 90vw);
+  font-size: 12px;
+  text-align: center;
 }
 #notice {
   position: fixed;

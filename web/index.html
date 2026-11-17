@@ -68,7 +68,7 @@
       </symbol>
       <symbol id="i-flow" viewBox="0 0 24 24">
         <circle class="fill" cx="12" cy="12" r="8.5" />
-        <path d="M12 6.5V12l4 2M19 3v5h-5" />
+        <path d="M12 6.5V12l4 2M5 21v-5h5" />
       </symbol>
       <symbol id="i-close-world" viewBox="0 0 24 24">
         <path class="fill" d="M4 4h12v16H4Z" />
@@ -248,6 +248,7 @@
       ><i class="divider"></i><button id="map-jump" disabled>跳转</button
       ><button id="map-close">关闭</button>
     </footer>
+    <output id="task-status" class="panel" role="status" hidden></output>
     <div id="notice" class="panel" role="status" hidden></div>
     <section id="settings" class="popover panel" popover>
       <h2>显示设置</h2>
@@ -279,35 +280,21 @@
         </select></label
       >
       <label class="setting"
-        >静止时累积<select id="still-samples">
-          <option value="0">关闭</option>
-          <option value="16">16 帧</option>
-          <option value="64">64 帧</option>
-          <option value="256">256 帧</option>
-        </select></label
-      >
+        >静止时累积<input id="still-accumulation" class="switch" type="checkbox"
+      /></label>
       <label class="setting"
         >远景雾<input id="fog" class="switch" type="checkbox"
       /></label>
-      <p class="hint">累积改善软影与边缘；远景雾淡化窗口边界。</p>
+      <p class="hint">
+        静止时持续累积，软影、反光与边缘越来越干净，移动后重新开始；第一次开启要准备一个较耗时的模块。远景雾淡化窗口边界。
+      </p>
       <label class="setting"
         >照片尺寸<select id="photo-scale">
           <option value="1">与渲染画面相同</option>
           <option value="2">渲染画面 2×</option>
         </select></label
       >
-      <label class="setting"
-        >照片样本<select id="photo-samples">
-          <option value="4">4 / 像素</option>
-          <option value="8">8 / 像素</option>
-          <option value="16">16 / 像素</option>
-          <option value="32">32 / 像素</option>
-          <option value="64">64 / 像素</option>
-          <option value="256">256 / 像素</option>
-          <option value="1024">1024 / 像素</option>
-        </select></label
-      >
-      <p class="hint">拍照完成后下载 PNG，再按相机按钮取消。</p>
+      <p class="hint">按相机按钮开始拍照，画面逐渐变干净；满意时再按一次保存 PNG，按 Esc 放弃。</p>
       <label class="setting"
         >移动速度<select id="speed">
           <option value="16">16 方块 / 秒</option>

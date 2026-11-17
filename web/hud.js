@@ -8,9 +8,8 @@
  * @property {number} time
  * @property {boolean} timeFlow
  * @property {boolean} fog
- * @property {number} stillSamples
+ * @property {boolean} stillAccumulation
  * @property {number} photoScale
- * @property {number} photoSamples
  * @property {string} texturePath
  * @property {number} textureSize
  */
@@ -83,9 +82,8 @@ export function createHUD({ settings, jump, changed }) {
     ["resolution", "resolution"],
     ["speed", "speed"],
     ["fog", "fog"],
-    ["still-samples", "stillSamples"],
+    ["still-accumulation", "stillAccumulation"],
     ["photo-scale", "photoScale"],
-    ["photo-samples", "photoSamples"],
     ["time", "time"],
   ]) {
     const input = element(id),

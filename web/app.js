@@ -23,13 +23,15 @@ const settings = {
   time: 10,
   timeFlow: true,
   fog: true,
-  stillSamples: 64,
+  stillAccumulation: false,
   photoScale: 1,
-  photoSamples: 32,
   texturePath: "",
   textureSize: 128,
   ...JSON.parse(localStorage.getItem("neomega-r2-settings") || "{}"),
 };
+// 旧版按样本数设置累积与拍照的上限，现在只有开关，不再有上限。
+delete settings.stillSamples;
+delete settings.photoSamples;
 const controls = new FlightControls(canvas, camera);
 bindMovePad(element("movepad"), controls);
 const registry = new ObjectRegistry().register("enchanting_book", () =>
@@ -45,7 +47,9 @@ let frames = [],
   drawn = "",
   drawnAt = 0,
   continuous = false,
-  photo = null;
+  photo = null,
+  // 等累积模块编译好再开始的拍照请求。
+  photoWaiting = false;
 const hud = createHUD({
   settings,
   jump: (position) => {
@@ -56,6 +60,8 @@ const hud = createHUD({
 
 /** 设置持久化不参与逐帧时间推进，避免连续写入浏览器存储。 */
 function saveSettings() {
+  // 启动时这里先于渲染器创建运行；开关打开时，累积模块等渲染器就绪后再准备。
+  if (settings.stillAccumulation && renderer) prepareAccumulation();
   hud.settings();
   localStorage.setItem("neomega-r2-settings", JSON.stringify(settings));
   renderer?.resetTiming();
@@ -88,7 +94,7 @@ function useWorld(info, preserveCamera = false) {
 async function installWorld(info, preserveCamera) {
   if (world.id === info.id) { world = info; return; }
   if (world.id > info.id) return;
-  if (photo) await finishPhoto(false);
+  await cancelPhoto();
   // 离开开场场景或直接载入外部来源时从白天开始；来源之间切换及连接重置保留当前时间。
   const startDaytime = !info.scene && (!world.loaded || !!world.scene);
   stream?.dispose();
@@ -279,14 +285,69 @@ element("texture-size").onchange = () =>
     hud.error(String(error)),
   );
 
-// 拍照使用独立缓冲，不把 HUD 或标记写入照片。
+// 静止累积与拍照共用一个较大的射线程序，启动时不编译；第一次需要时在后台编译，期间预览照常。
+const taskStatus = element("task-status");
+/** @type {Promise<void>|null} */
+let preparing = null,
+  preparingSince = 0;
+/** 准备累积模块；已在准备或已经可用时不重复。失败时提示，之后再次需要时重试。 */
+function prepareAccumulation() {
+  if (renderer.accumulationReady || preparing) return preparing ?? Promise.resolve();
+  preparingSince = performance.now();
+  preparing = renderer
+    .prepareAccumulation()
+    .catch((error) => {
+      photoWaiting = false;
+      setPhotoButton(false);
+      hud.error(`更复杂光线处理的模块准备失败：${error.message || error}`);
+      throw error;
+    })
+    .finally(() => {
+      preparing = null;
+      drawn = "";
+    });
+  preparing.catch(() => {});
+  return preparing;
+}
+/** 底部提示：模块准备进度，或拍照时的操作说明。 */
+function showTaskStatus(now) {
+  const text = photo
+    ? `拍照中 · 已累积 ${photo.samples} 样本，画面会越来越干净 · 满意时再按相机按钮保存，按 Esc 放弃`
+    : preparing && (settings.stillAccumulation || photoWaiting)
+      ? `正在准备支持更复杂光线处理的模块，比较耗时，需要 1～2 分钟 · 已用 ${Math.floor((now - preparingSince) / 1000)} 秒${photoWaiting ? " · 准备好后自动开始拍照，再按相机按钮取消" : ""}`
+      : "";
+  if (taskStatus.textContent !== text) taskStatus.textContent = text;
+  taskStatus.hidden = !text;
+}
+/** @param {boolean} active */
+function setPhotoButton(active) {
+  element("photo").setAttribute("aria-pressed", String(active));
+  element("photo").title = element("photo").ariaLabel = photo ? "保存照片" : active ? "取消拍照" : "拍照";
+  element("photo-progress").hidden = !photo;
+}
+// 拍照使用独立缓冲，不把 HUD 或标记写入照片。按下后画面上实时显示照片逐渐收敛，再按一次保存。
 element("photo").onclick = () => {
-  if (photo) return finishPhoto(false);
+  if (photo) return finishPhoto(true);
+  if (photoWaiting) {
+    photoWaiting = false;
+    return setPhotoButton(false);
+  }
+  if (renderer.accumulationReady) return startPhoto();
+  photoWaiting = true;
+  setPhotoButton(true);
+  prepareAccumulation().then(() => {
+    if (photoWaiting) startPhoto();
+  }, () => {});
+};
+addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && (photo || photoWaiting)) cancelPhoto();
+});
+function startPhoto() {
+  photoWaiting = false;
   const scale = renderScale() * settings.photoScale;
   photo = renderer.photograph(camera, {
     width: Math.round(innerWidth * scale),
     height: Math.round(innerHeight * scale),
-    samples: settings.photoSamples,
     time: performance.now() / 1000,
     shadows: settings.shadows,
     sun: sunDirection(settings.time),
@@ -294,15 +355,21 @@ element("photo").onclick = () => {
     fog: settings.fog ? settings.farRadius * 16 : Infinity,
   });
   photo.name = `${world.name || "天空"}-${new Date().toTimeString().slice(0, 8).replaceAll(":", "")}.png`;
-  element("photo").setAttribute("aria-pressed", "true");
-  element("photo").title = element("photo").ariaLabel = "取消拍照";
-  element("photo-progress").hidden = false;
-};
-/** 完成后下载，取消时直接释放照片缓冲；编码期间继续冻结场景。
+  setPhotoButton(true);
+  showTaskStatus(performance.now());
+}
+/** 放弃正在进行或正在等待的拍照。 */
+function cancelPhoto() {
+  photoWaiting = false;
+  if (photo) return finishPhoto(false);
+  setPhotoButton(false);
+}
+/** 保存时下载，放弃时直接释放照片缓冲；编码期间继续冻结场景。
  * @param {boolean} download
  */
 async function finishPhoto(download) {
   const job = photo;
+  if (!job || job.finishing) return;
   job.finishing = true;
   if (download) {
     const link = document.createElement("a");
@@ -314,15 +381,13 @@ async function finishPhoto(download) {
   job.dispose();
   photo = null;
   drawn = "";
-  element("photo").setAttribute("aria-pressed", "false");
-  element("photo").title = element("photo").ariaLabel = "拍照";
-  element("photo-progress").hidden = true;
+  setPhotoButton(false);
 }
 
 let pageID = 0, command = 0, eventQueue = Promise.resolve(), sentView = "", viewAt = 0, viewBusy = false;
 /** 位置命令结束照片和持续移动，省略朝向时保留原来的视线。 */
 async function resetCamera(value) {
-  if (photo) await finishPhoto(false);
+  await cancelPhoto();
   controls.cancel();
   map.hide();
   camera.position = [...value.position];
@@ -379,12 +444,16 @@ function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
+  if (now - statusAt > 100) showTaskStatus(now);
   if (photo) {
     if (photo.finishing) return;
-    if (photo.step()) finishPhoto(true);
-    else
-      element("photo-progress").textContent =
-        `${Math.floor(photo.progress * 100)}% · 再按取消`;
+    photo.step();
+    photo.present();
+    element("photo-progress").textContent = `${photo.samples} 样本`;
+    if (now - statusAt > 100) {
+      statusAt = now;
+      element("fps").textContent = "拍照中";
+    }
     return;
   }
   const view = map.frame(settings);
@@ -418,11 +487,10 @@ function frame(now) {
     state !== drawn ||
     (objects && renderer.animating(view.camera, { width, height }));
   let rendered = false;
-  if (
-    !view.overview &&
-    (changed || renderer.accumulated < settings.stillSamples)
-  ) {
-    renderer.draw(view.camera, {
+  // 静止时一直累积，直到画面再次变化；没有样本上限。
+  const accumulating = settings.stillAccumulation && renderer.accumulationReady;
+  if (!view.overview && (changed || accumulating)) {
+    rendered = renderer.draw(view.camera, {
       width,
       height,
       accumulate: !changed,
@@ -433,7 +501,6 @@ function frame(now) {
       fog: view.fog,
       objects,
     });
-    rendered = true;
   }
   if (changed) {
     if (now - drawnAt < 250) frames.push(now - drawnAt);
@@ -448,7 +515,7 @@ function frame(now) {
     const interval = frames.reduce((a, b) => a + b, 0) / frames.length;
     element("fps").textContent = !changed
       ? rendered
-        ? `累积 ${renderer.accumulated}/${settings.stillSamples}`
+        ? `累积 ${renderer.accumulated}`
         : "静止"
       : `${Math.round(1000 / interval) || "—"} FPS`;
     if (stream) {
@@ -497,6 +564,7 @@ if (settings.texturePath || settings.textureSize !== 128)
     hud.error(String(error)),
   );
 await useWorld(await (await fetch("/api/world")).json());
+if (settings.stillAccumulation) prepareAccumulation();
 window.addEventListener("pagehide", () => {
   stream?.dispose();
   renderer.dispose();
