@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"neomega-converter-core/structure"
@@ -20,6 +21,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 )
@@ -45,7 +47,7 @@ func run() error {
 	structureWorkers := flag.Int("structure-workers", 0, "结构写出并发上限，0 自动选择")
 	webPath := flag.String("web", "", "开发时读取应用网页目录")
 	browser := flag.Bool("browser", true, "启动后自动打开应用窗口")
-	angle := flag.String("angle", "gl", "打开窗口时使用的 ANGLE 后端：gl、vulkan、d3d11；system 表示系统默认浏览器")
+	open := flag.String("open", desktop.Choices[0].Key, "启动时打开窗口用的浏览器与图形后端：edge-vulkan、chrome-vulkan、chrome-gl；system 表示系统默认浏览器")
 	showVersion := flag.Bool("version", false, "打印版本号后退出")
 	flag.Parse()
 	if *showVersion {
@@ -55,6 +57,14 @@ func run() error {
 	if *world != "" && *connect != "" {
 		return fmt.Errorf("-world 与 -connect 请选择一个")
 	}
+	if _, ok := desktop.FindChoice(*open); !ok && *open != "system" {
+		return fmt.Errorf("-open 不认识 %q", *open)
+	}
+	// 诊断日志放在 exe 旁边；测试者遇到问题时把整份文件发回来。
+	diag := desktop.OpenDiagnostics("neomega-viewer-r2-log.txt")
+	defer diag.Close()
+	diag.Environment(version)
+	log.SetOutput(io.MultiWriter(os.Stderr, diag))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	colored := desktop.TerminalColors()
@@ -114,8 +124,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	handler := http.NewServeMux()
+	handler.Handle("POST /api/diagnostics", diag.Handler())
+	handler.Handle("/", service.Handler(web))
 	httpServer := &http.Server{
-		Handler:           service.Handler(web),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	done := make(chan error, 1)
@@ -123,14 +136,24 @@ func run() error {
 	progress.Done()
 	address := desktop.BrowserAddress(listener.Addr())
 	desktop.PrintReady(os.Stdout, address, colored)
+	diag.Printf("服务就绪：%s", address)
 	if *browser {
-		// 开机/双击时没有任何参数，用这里的默认后端直接打开应用窗口。
-		if *angle == "system" {
-			desktop.OpenBrowser(address)
-			fmt.Println("  窗口：系统默认浏览器")
-		} else {
-			fmt.Println("  窗口：" + desktop.LaunchApp(address, *angle))
-		}
+		openWindow(address, *open, diag)
+	}
+	if runtime.GOOS == "windows" {
+		// 终端里列出几种浏览器与图形后端组合，点按钮或按数字键用另一种组合再开一个窗口。
+		restore, interactive := desktop.ListenChoices(func(i int) {
+			if name, err := desktop.LaunchChoice(address, i, diag); err != nil {
+				fmt.Printf("  打不开 %s：%v\n", desktop.Choices[i].Name, err)
+			} else {
+				fmt.Println("  窗口：" + name)
+			}
+		})
+		defer restore()
+		desktop.PrintChoices(os.Stdout, colored, interactive)
+	}
+	if diag.Path != "" {
+		fmt.Println("  诊断日志：" + diag.Path + "（遇到问题时把这个文件发给开发者）")
 	}
 	select {
 	case err := <-done:
@@ -142,4 +165,25 @@ func run() error {
 	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return httpServer.Shutdown(shutdown)
+}
+
+// openWindow 按 -open 打开第一个窗口；指定组合的浏览器没装时按 Choices 的顺序尝试下一种，都没有就用系统默认浏览器。
+func openWindow(address, key string, diag *desktop.Diagnostics) {
+	if key == "system" {
+		desktop.OpenBrowser(address)
+		diag.Printf("用系统默认浏览器打开")
+		fmt.Println("  窗口：系统默认浏览器")
+		return
+	}
+	first, _ := desktop.FindChoice(key)
+	for n := range desktop.Choices {
+		i := (first + n) % len(desktop.Choices)
+		if name, err := desktop.LaunchChoice(address, i, diag); err == nil {
+			fmt.Println("  窗口：" + name)
+			return
+		}
+	}
+	desktop.OpenBrowser(address)
+	diag.Printf("没有找到 Edge 或 Chrome，用系统默认浏览器打开")
+	fmt.Println("  窗口：系统默认浏览器（没有找到 Edge 或 Chrome，无法选择图形后端）")
 }

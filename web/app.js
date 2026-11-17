@@ -10,8 +10,13 @@ import { createPicker } from "./picker.js";
 import { createHUD, element, closePopovers } from "./hud.js";
 import { drawAxes } from "./overlay.js";
 import { FullscreenMap } from "./map.js";
+import { report, describe, startDiagnostics } from "./diagnostics.js";
+
+startDiagnostics();
 
 const canvas = element("view");
+canvas.addEventListener("webglcontextlost", () => report("context-lost"));
+canvas.addEventListener("webglcontextrestored", () => report("context-restored"));
 const camera = { position: [0, 80, 0], yaw: -0.7, pitch: -0.32 };
 /** @type {import("./hud.js").ViewerSettings} */
 const settings = {
@@ -57,6 +62,12 @@ const hud = createHUD({
   },
   changed: saveSettings,
 });
+// 界面上弹出的错误同时写进诊断日志。
+const showError = hud.error;
+hud.error = (message) => {
+  report("hud-error", { message: String(message).slice(0, 4000) });
+  showError(message);
+};
 
 /** 设置持久化不参与逐帧时间推进，避免连续写入浏览器存储。 */
 function saveSettings() {
@@ -159,6 +170,7 @@ const statusLine = element("loading");
 let compileTicker = 0;
 const compileStarted = performance.now();
 const showCompile = ({ index, total, label }) => {
+  report("compile", { index, total, label, seconds: +((performance.now() - compileStarted) / 1000).toFixed(1) });
   clearInterval(compileTicker);
   const tick = () => {
     const seconds = ((performance.now() - compileStarted) / 1000).toFixed(0);
@@ -170,6 +182,10 @@ const showCompile = ({ index, total, label }) => {
 statusLine.textContent = "正在准备渲染器…";
 try {
   renderer = await createRenderer(canvas, { onProgress: showCompile });
+  report("renderer-ready", { seconds: +((performance.now() - compileStarted) / 1000).toFixed(1) });
+} catch (error) {
+  report("renderer-failed", { seconds: +((performance.now() - compileStarted) / 1000).toFixed(1), message: describe(error) });
+  throw error;
 } finally {
   clearInterval(compileTicker);
   statusLine.textContent = "";
@@ -294,9 +310,12 @@ let preparing = null,
 function prepareAccumulation() {
   if (renderer.accumulationReady || preparing) return preparing ?? Promise.resolve();
   preparingSince = performance.now();
+  report("accumulation-start");
   preparing = renderer
     .prepareAccumulation()
+    .then(() => report("accumulation-ready", { seconds: +((performance.now() - preparingSince) / 1000).toFixed(1) }))
     .catch((error) => {
+      report("accumulation-failed", { seconds: +((performance.now() - preparingSince) / 1000).toFixed(1), message: describe(error) });
       photoWaiting = false;
       setPhotoButton(false);
       hud.error(`更复杂光线处理的模块准备失败：${error.message || error}`);
@@ -564,6 +583,19 @@ if (settings.texturePath || settings.textureSize !== 128)
     hud.error(String(error)),
   );
 await useWorld(await (await fetch("/api/world")).json());
+// 运行一阵后记下实际帧率与 GPU 时间，判断这种浏览器与图形后端组合是否够快。
+for (const delay of [15000, 60000])
+  setTimeout(() => {
+    const times = renderer.times.sort((a, b) => a - b),
+      interval = frames.reduce((a, b) => a + b, 0) / frames.length;
+    report("performance", {
+      canvas: [canvas.width, canvas.height],
+      resolution: settings.resolution,
+      gpuMedianMs: times[times.length >> 1] ?? null,
+      fps: interval ? Math.round(1000 / interval) : null,
+      world: world.kind || "mobius",
+    });
+  }, delay);
 if (settings.stillAccumulation) prepareAccumulation();
 window.addEventListener("pagehide", () => {
   stream?.dispose();
