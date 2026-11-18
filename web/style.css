@@ -90,6 +90,7 @@ dialog::backdrop {
   gap: 5px;
   overflow: auto;
 }
+#file-search { margin-left: auto; width: 10em; min-width: 7em; }
 .locations {
   border-bottom: 1px solid #dce2e2;
   padding-bottom: 8px;

@@ -14,6 +14,7 @@ declare global {
 export function createPicker(openWorld: OpenWorld) {
   const dialog = document.querySelector<HTMLDialogElement>("#files")!,
     input = document.querySelector<HTMLInputElement>("#directory")!,
+    search = document.querySelector<HTMLInputElement>("#file-search")!,
     list = document.querySelector<HTMLElement>("#file-list")!,
     message = document.querySelector<HTMLOutputElement>("#file-message")!,
     dimension = document.querySelector<HTMLSelectElement>("#source-dimension")!;
@@ -41,6 +42,16 @@ export function createPicker(openWorld: OpenWorld) {
       return option;
     }));
   }
+  // 只匹配当前列表中的名称，避免类型标签也被当成文件名命中。
+  search.oninput = () => {
+    const query = search.value.trim().toLowerCase();
+    let matches = 0;
+    for (const row of list.querySelectorAll<HTMLButtonElement>(".file")) {
+      row.hidden = !row.dataset.name!.includes(query);
+      if (!row.hidden) matches++;
+    }
+    message.textContent = query ? `匹配 ${matches} / ${list.childElementCount} 个项目` : `${matches} 个项目`;
+  };
   /** 浏览错误留在选择器中，用户可以修改路径继续。 */
   async function browse(path = "") {
     if (opening) return false;
@@ -48,6 +59,7 @@ export function createPicker(openWorld: OpenWorld) {
     const controller = new AbortController();
     browsing = controller;
     message.textContent = "正在读取目录…";
+    search.disabled = true;
     input.disabled = true;
     document.querySelector<HTMLButtonElement>("#open-directory")!.disabled = true;
     document.querySelector<HTMLButtonElement>("#parent")!.disabled = true;
@@ -61,6 +73,7 @@ export function createPicker(openWorld: OpenWorld) {
         ? ["0", "1", "2"]
         : input.value === currentWorld.path ? currentWorld.dimensions : [""]);
       dimension.value = input.value === currentWorld.path ? currentWorld.dimension ?? "" : dimension.options[0].value;
+      search.value = "";
       list.replaceChildren();
       document.querySelector<HTMLElement>("#roots")!.replaceChildren();
       for (const root of listing.roots) {
@@ -72,6 +85,7 @@ export function createPicker(openWorld: OpenWorld) {
       for (const entry of listing.entries) {
         const row = document.createElement("button");
         row.className = "file";
+        row.dataset.name = entry.name.toLowerCase();
         row.setAttribute("aria-selected", String(entry.path === selected));
         const name = document.createElement("span"), label = document.createElement("span");
         name.textContent = entry.name;
@@ -99,6 +113,7 @@ export function createPicker(openWorld: OpenWorld) {
     finally {
       if (browsing === controller) {
         browsing = null;
+        search.disabled = false;
         input.disabled = false;
         document.querySelector<HTMLButtonElement>("#open-directory")!.disabled = false;
         document.querySelector<HTMLButtonElement>("#parent")!.disabled = !listing;
@@ -117,6 +132,7 @@ export function createPicker(openWorld: OpenWorld) {
     browsing = null;
     message.textContent = kind === "pack" ? "正在合成材质包…" : "正在打开来源…";
     opening = new AbortController();
+    search.disabled = true;
     document.querySelector<HTMLButtonElement>("#open-directory")!.disabled = true;
     try {
       if (kind === "pack") await onChoose(path);
@@ -132,6 +148,7 @@ export function createPicker(openWorld: OpenWorld) {
     } catch (error) {
       if (!(error instanceof Error && error.name === "AbortError")) message.textContent = String(error);
     } finally {
+      search.disabled = false;
       opening = null;
       document.querySelector<HTMLButtonElement>("#open-directory")!.disabled = false;
     }

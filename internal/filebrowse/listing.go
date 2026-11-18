@@ -31,14 +31,19 @@ type Listing struct {
 
 // List 由 Go 处理盘符、父目录和符号链接，网页只使用返回的完整路径。
 func List(path string, packs bool) (Listing, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return Listing{}, err
-	}
+	work, workErr := os.Getwd()
+	home, _ := os.UserHomeDir()
+	path = strings.Trim(strings.TrimSpace(path), "\"")
 	if path == "" {
-		path = home
+		path = work
+		if workErr != nil {
+			if home == "" {
+				return Listing{}, workErr
+			}
+			path = home
+		}
 	}
-	path, err = filepath.Abs(strings.Trim(strings.TrimSpace(path), "\""))
+	path, err := filepath.Abs(path)
 	if err != nil {
 		return Listing{}, err
 	}
@@ -50,10 +55,19 @@ func List(path string, packs bool) (Listing, error) {
 	if err != nil {
 		return Listing{}, err
 	}
-	out := Listing{Selected: selected, Path: path, Parent: filepath.Dir(path), Entries: []Entry{}, Roots: []Entry{{Name: "主目录", Path: home}}}
-	out.Kind = worldinput.DirectoryKind(path)
-	if selected != "" && worldinput.FileKind(selected) != "level" {
-		out.Kind = worldinput.FileKind(selected)
+	out := Listing{Selected: selected, Path: path, Parent: filepath.Dir(path), Entries: []Entry{}}
+	if workErr == nil {
+		out.Roots = append(out.Roots, Entry{Name: "工作目录", Path: work})
+	}
+	if home != "" && home != work {
+		out.Roots = append(out.Roots, Entry{Name: "主目录", Path: home})
+	}
+	out.Kind = directoryKind(path, packs)
+	if selected != "" {
+		// level.dat 的维度选项由所在的存档目录决定。
+		if kind := fileKind(selected, packs); kind != "level" {
+			out.Kind = kind
+		}
 	}
 	if runtime.GOOS == "windows" {
 		for c := 'A'; c <= 'Z'; c++ {
@@ -72,30 +86,47 @@ func List(path string, packs bool) (Listing, error) {
 			continue
 		}
 		value := Entry{Name: entry.Name(), Path: full, Directory: stat.IsDir()}
-		if packs {
-			if stat.IsDir() {
-				_, err := os.Stat(filepath.Join(full, "assets"))
-				value.Kind, value.Openable = "folder", err == nil
-				if value.Openable {
-					value.Kind = "texture"
-				}
-			} else if strings.EqualFold(filepath.Ext(full), ".zip") {
-				value.Kind, value.Openable = "texture", true
-			} else {
-				continue
-			}
-		} else if stat.IsDir() {
-			value.Kind = worldinput.DirectoryKind(full)
-			value.Openable = value.Kind != "folder"
+		if value.Directory {
+			value.Kind = directoryKind(full, packs)
 		} else {
-			value.Kind = worldinput.FileKind(full)
-			if value.Kind == "unknown" {
-				continue
-			}
-			value.Openable = true
+			value.Kind = fileKind(full, packs)
 		}
+		if value.Kind == "unknown" {
+			continue
+		}
+		value.Openable = value.Kind != "folder"
 		out.Entries = append(out.Entries, value)
 	}
-	slices.SortFunc(out.Entries, func(a, b Entry) int { return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
+	slices.SortFunc(out.Entries, func(a, b Entry) int {
+		if a.Openable != b.Openable {
+			if a.Openable {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
 	return out, nil
+}
+
+// 直接输入路径和点选列表项使用同一套来源识别规则。
+func directoryKind(path string, packs bool) string {
+	if !packs {
+		return worldinput.DirectoryKind(path)
+	}
+	if assets, err := os.Stat(filepath.Join(path, "assets")); err == nil && assets.IsDir() {
+		return "texture"
+	}
+	return "folder"
+}
+
+// 材质包模式识别 ZIP，存档模式沿用转换器支持的文件格式。
+func fileKind(path string, packs bool) string {
+	if !packs {
+		return worldinput.FileKind(path)
+	}
+	if strings.EqualFold(filepath.Ext(path), ".zip") {
+		return "texture"
+	}
+	return "unknown"
 }
