@@ -1,129 +1,466 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <link rel="icon" href="data:," />
-    <title>neOmega Viewer R2</title>
-    <link rel="stylesheet" href="/r2/common_ui/style.css" />
-    <link rel="stylesheet" href="/style.css" />
-  </head>
-  <body>
-    <template id="actions"><button id="world-name" popovertarget="info" title="场景信息">
-        <span id="world-label">未打开存档</span><span id="link-state" role="img" hidden></span></button
-      ><button
-        id="open-world"
-        class="icon-button"
-        title="打开存档"
-        aria-label="打开存档"
-      >
-        <svg><use href="#i-folder" /></svg></button
-      ><button id="connect-source" class="icon-button" title="连接数据源" aria-label="连接数据源">
-        <svg><use href="#i-link" /></svg></button
-      ><button
-        id="close-world"
-        class="icon-button"
-        title="关闭存档"
-        aria-label="关闭存档"
-        disabled
-      >
-        <svg><use href="#i-close-world" /></svg></button
-      ><button id="export-html" class="icon-button" title="导出离线 HTML" aria-label="导出离线 HTML" disabled>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path class="fill" d="M5 3.5h9l5 5v12H5Z"/><path d="M14 3.5v5h5M10 12l-3 2.5 3 2.5m4-5 3 2.5-3 2.5"/></svg>
-      </button><output id="export-status" role="status" hidden></output><i class="divider"></i></template>
-    <template id="settings-extra">
-      <h3>Java 材质包</h3>
-      <input
-        id="texture-path"
-        aria-label="材质包路径"
-        placeholder="原版，或输入 zip / 目录路径"
-      />
-      <div class="row">
-        <button id="texture-browse">选择</button
-        ><button id="texture-apply">应用</button
-        ><button id="texture-reset">恢复原版</button>
-      </div>
-      <label class="setting"
-        >贴图尺寸上限<select id="texture-size">
-          <option value="16">16</option>
-          <option value="32">32</option>
-          <option value="64">64</option>
-          <option value="128">128</option>
-          <option value="256">256</option>
-          <option value="512">512</option>
-        </select></label
-      >
-      <p id="texture-status" class="hint">原版 · 支持 labPBR 法线与高光贴图</p>
-    </template>
-    <section id="info" class="popover panel" popover>
-      <h2 id="info-name">场景信息</h2>
-      <p id="info-path"></p>
-      <label id="world-dimension-row" class="setting" hidden>维度<select id="world-dimension"></select></label>
-      <p id="height-diagnostics" class="hint" hidden></p>
-      <dl id="details"></dl>
-      <p class="hint">1 个 r2region 横向覆盖 8×8 个区块（chunk）。每个区块按高度分层，每 16 层是一个 16×16×16 方块的子区块（subchunk）。</p>
-    </section>
-    <dialog id="link-dialog" class="panel">
-      <form method="dialog" class="picker-title">
-        <h2>连接数据源</h2>
-        <button id="link-dismiss" class="icon-button" title="关闭连接面板" aria-label="关闭连接面板">
-          <svg><use href="#i-close" /></svg>
-        </button>
-      </form>
-      <p class="hint">游戏机器人、服务器插件或存档服务提供的 R2Link 地址。连接成功后关闭当前存档。</p>
-      <label class="row">地址<input id="link-url" placeholder="ws://host:port/r2link" /></label>
-      <div class="row bottom"><output id="link-message"></output><button id="link-start">连接</button></div>
-    </dialog>
-    <dialog id="files" class="panel">
-      <form method="dialog" class="picker-title">
-        <h2>打开存档或结构</h2>
-        <button
-          id="picker-cancel"
-          class="icon-button"
-          title="关闭文件选择器"
-          aria-label="关闭文件选择器"
-        >
-          <svg><use href="#i-close" /></svg>
-        </button>
-      </form>
-      <div id="file-drop" hidden>
-        <strong id="file-drop-title">将存档目录或文件拖到这里打开</strong>
-        <span>一次一个，松开即打开；可先调整下方打开选项</span>
-      </div>
-      <div class="row">
-        <input
-          id="directory"
-          placeholder="存档或目录路径"
-          aria-label="目录路径"
-        /><button id="browse">浏览</button>
-      </div>
-      <div class="row locations">
-        <button id="parent" title="上级目录">
-          <svg><use href="#i-parent" /></svg>
-        </button>
-        <div id="roots"></div>
-      </div>
-      <div id="file-list"></div>
-      <details id="source-options">
-        <summary>打开选项</summary>
-        <div class="source-fields">
-        <label class="setting">维度<select id="source-dimension"></select></label>
-        <label class="setting">Bedrock 邻接修复<input id="source-fix" type="checkbox" checked /></label>
-        <label class="setting">结构转换内存（MiB）<input id="source-memory" type="number" min="64" value="512" /></label>
-        <label class="setting">结构写出并发<input id="source-workers" type="number" min="0" value="0" /></label>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <link rel="icon" href="data:," />
+        <title>neOmega Viewer R2</title>
+        <link rel="stylesheet" href="/r2/common_ui/style.css" />
+        <link rel="stylesheet" href="/style.css" />
+    </head>
+    <body>
+        <svg class="app-symbols" aria-hidden="true">
+            <symbol id="i-html" viewBox="0 0 24 24">
+                <path d="M5 3.5h9l5 5v12H5Z" />
+                <path d="M14 3.5v5h5M10 12l-3 2.5 3 2.5m4-5 3 2.5-3 2.5" />
+            </symbol>
+            <symbol id="i-help" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="9" />
+                <path
+                    d="M9.4 9a2.7 2.7 0 0 1 5.3.3c0 2-2.7 2.2-2.7 4.6M12 17h.01"
+                />
+            </symbol>
+        </svg>
+        <template id="leading-actions">
+            <button
+                id="export-html"
+                class="icon-button"
+                title="导出离线 HTML"
+                aria-label="导出离线 HTML"
+                disabled
+            >
+                <svg><use href="#i-html" /></svg>
+            </button>
+            <output id="export-status" role="status" hidden></output>
+            <i class="divider"></i>
+        </template>
+        <template id="actions">
+            <button id="world-name" popovertarget="info" title="场景信息">
+                <span id="world-label">未打开存档</span
+                ><span id="link-state" role="img" hidden></span>
+            </button>
+            <button
+                id="connect-source"
+                class="icon-button"
+                title="连接数据源"
+                aria-label="连接数据源"
+            >
+                <svg><use href="#i-link" /></svg>
+            </button>
+            <button
+                id="open-world"
+                class="icon-button"
+                title="打开存档"
+                aria-label="打开存档"
+            >
+                <svg><use href="#i-folder" /></svg>
+            </button>
+            <button
+                id="close-world"
+                class="icon-button"
+                title="关闭存档"
+                aria-label="关闭存档"
+                disabled
+            >
+                <svg><use href="#i-close-world" /></svg>
+            </button>
+            <i class="divider"></i>
+            <button
+                class="icon-button"
+                id="help-open"
+                title="操作帮助"
+                aria-label="操作帮助"
+                aria-haspopup="dialog"
+            >
+                <svg><use href="#i-help" /></svg>
+            </button>
+        </template>
+        <template id="settings-extra">
+            <h3>Java 材质包</h3>
+            <input
+                id="texture-path"
+                aria-label="材质包路径"
+                placeholder="原版，或输入 zip / 目录路径"
+            />
+            <div class="row">
+                <button id="texture-browse">选择</button
+                ><button id="texture-apply">应用</button
+                ><button id="texture-reset">恢复原版</button>
+            </div>
+            <label class="setting"
+                >贴图尺寸上限<select id="texture-size">
+                    <option value="16">16</option>
+                    <option value="32">32</option>
+                    <option value="64">64</option>
+                    <option value="128">128</option>
+                    <option value="256">256</option>
+                    <option value="512">512</option>
+                </select></label
+            >
+            <p id="texture-status" class="hint">
+                原版 · 支持 labPBR 法线与高光贴图
+            </p>
+        </template>
+        <dialog id="help" class="panel" aria-labelledby="help-title">
+            <form method="dialog" class="help-header">
+                <h2 id="help-title">操作帮助</h2>
+                <button
+                    class="icon-button"
+                    aria-label="关闭帮助"
+                    title="关闭帮助"
+                    autofocus
+                >
+                    <svg><use href="#i-close" /></svg>
+                </button>
+            </form>
+            <div
+                class="help-content"
+                tabindex="0"
+                role="region"
+                aria-label="操作说明"
+            >
+                <h3>预览与时间</h3>
+                <dl class="help-icons">
+                    <dt>
+                        <svg aria-hidden="true"><use href="#i-voxel" /></svg
+                        >体素渲染器
+                    </dt>
+                    <dd>
+                        用纯色方块简化模型，省去贴图和光影，资源占用最低。适合快速浏览大范围地形。
+                    </dd>
+                    <dt>
+                        <svg aria-hidden="true"><use href="#i-basic" /></svg
+                        >基础渲染器
+                    </dt>
+                    <dd>显示完整方块模型和贴图，方便检查建筑的形状与用材。</dd>
+                    <dt>
+                        <svg aria-hidden="true"><use href="#i-shading" /></svg
+                        >光影渲染器
+                    </dt>
+                    <dd>加入阴影、远景雾和水面反射，适合观察光照或取景。</dd>
+                    <dt>
+                        <svg aria-hidden="true"><use href="#i-eye" /></svg>隐藏
+                        HUD
+                    </dt>
+                    <dd>
+                        收起工具栏和读数，让出观察空间。再点右上角的眼睛即可恢复。
+                    </dd>
+                    <dt>
+                        <svg aria-hidden="true">
+                            <use href="#i-accumulate" /></svg
+                        >静止时累积
+                    </dt>
+                    <dd>
+                        停下相机后持续采样，让画面逐渐清晰。开启时会暂停时间流逝。
+                    </dd>
+                    <dt>
+                        <svg aria-hidden="true"><use href="#i-flow" /></svg
+                        >时间流逝
+                    </dt>
+                    <dd>
+                        让太阳随时间移动，观察昼夜光照。拖动右侧滑条可直接选择时刻。
+                    </dd>
+                </dl>
+                <h3>地图与画面</h3>
+                <dl class="help-icons">
+                    <dt>
+                        <svg aria-hidden="true"><use href="#i-map" /></svg
+                        >全屏地图
+                    </dt>
+                    <dd>
+                        从上方查看周围地形。点选方块后可跳转到该处，再点地图图标或按
+                        Esc 返回。
+                    </dd>
+                    <dt>
+                        <svg aria-hidden="true"><use href="#i-export" /></svg
+                        >导出当前画面
+                    </dt>
+                    <dd>
+                        用当前预览渲染器重绘视图，采样完成后自动保存
+                        PNG。适合保留当前画面风格。
+                    </dd>
+                    <dt>
+                        <svg aria-hidden="true"><use href="#i-camera" /></svg
+                        >拍照
+                    </dt>
+                    <dd>
+                        用累积渲染器逐步细化照片。满意时再按一次相机保存 PNG，按
+                        Esc 可放弃。
+                    </dd>
+                    <dt>
+                        <svg aria-hidden="true"><use href="#i-settings" /></svg
+                        >设置
+                    </dt>
+                    <dd>
+                        调整视距、移动速度和画质。拍照与导出可分别设置屏幕尺寸倍数和超采样网格。
+                    </dd>
+                </dl>
+                <h3>坐标与存档</h3>
+                <dl class="help-icons">
+                    <dt>
+                        <svg aria-hidden="true"><use href="#i-html" /></svg
+                        >导出离线 HTML
+                    </dt>
+                    <dd>
+                        把当前维度和材质保存成一个网页，之后可离线打开并继续浏览。
+                    </dd>
+                    <dt>
+                        <svg aria-hidden="true"><use href="#i-arrow" /></svg
+                        >跳转到坐标
+                    </dt>
+                    <dd>
+                        编辑底部的 X、Y、Z 后点箭头或按回车，直接飞到指定位置。
+                    </dd>
+                    <dt>场景信息</dt>
+                    <dd>
+                        点击场景名称可查看存档路径和加载信息。多维度存档还可在这里切换维度。
+                    </dd>
+                    <dt>
+                        <svg aria-hidden="true"><use href="#i-link" /></svg
+                        >连接数据源
+                    </dt>
+                    <dd>
+                        填写 R2Link
+                        地址，从游戏机器人、服务器插件或存档服务加载世界。
+                    </dd>
+                    <dt>
+                        <svg aria-hidden="true"><use href="#i-folder" /></svg
+                        >打开存档
+                    </dt>
+                    <dd>选择服务端上的世界目录或结构文件，在查看器中打开。</dd>
+                    <dt>
+                        <svg aria-hidden="true">
+                            <use href="#i-close-world" /></svg
+                        >关闭存档
+                    </dt>
+                    <dd>
+                        离开当前存档或断开外部数据源，回到内置的莫比乌斯环场景。
+                    </dd>
+                    <dt>
+                        <svg aria-hidden="true"><use href="#i-help" /></svg
+                        >操作帮助
+                    </dt>
+                    <dd>打开这份图标说明。点右上角的关闭按钮或按 Esc 返回。</dd>
+                </dl>
+                <h3>移动与地图缩放</h3>
+                <dl class="help-icons">
+                    <dt>
+                        <svg aria-hidden="true"><use href="#i-up" /></svg
+                        >水平移动
+                    </dt>
+                    <dd>
+                        触屏方向键按相机朝向前进、后退或左右平移。键盘使用
+                        WASD。
+                    </dd>
+                    <dt>
+                        <svg aria-hidden="true"><use href="#i-rise" /></svg>升降
+                    </dt>
+                    <dd>
+                        触屏升降键沿高度方向移动。键盘用空格上升、Shift 下降。
+                    </dd>
+                    <dt>
+                        <svg aria-hidden="true"><use href="#i-minus" /></svg
+                        >地图缩放
+                    </dt>
+                    <dd>拖动地图底部的滑条，从局部地形缩放到大范围概览。</dd>
+                </dl>
+                <footer class="help-about">
+                    <h3>关于 neOmega Viewer R2</h3>
+                    <pre
+                        class="help-banner"
+                        role="img"
+                        aria-label="海面上的莫比乌斯环与 R2 字样"
+                    >
+                          :=+*****+-.
+                     .=*%@@@@%%%%%%@@@%*-
+                   =*%@@%*+:          =*@@*
+                 =#@@%*=                  *@*
+                +%@%*-                      +@
+              .*%@%+                          @
+              +%@%+                   ██████╗  ██████╗
+             -#@@*:                   ██╔══██╗ ╚════██╗
+             +%@%+                    ██║  ██║      ██║
+             +%@%+                    ██████╔╝  █████╔╝
+             =%@%*                    ██╔══██╗ ██╔═══╝
+             -#@@#-                   ██║  ██║ ███████╗
+              +%@%*:                  ╚═╝  ╚═╝ ╚══════╝
+╌╌╌╌╌╌╌╌───────+%@@#-━━━━━━━━━━━━━━━━━━━━━━━=%@#────────╌╌╌╌╌╌╌╌╌╌╌╌
+               =≈≈=     ------                ~  =------
+            ~=≈=                         -------≈=
+   -------~=≈≈  ~-                           ==            -------
+----             -  =~------               -==  ~
+            ---   -----                --------      =
+         -=~-                 -----------</pre>
+                    <p>
+                        查看器沿用了
+                        <a
+                            target="_blank"
+                            rel="noopener"
+                            href="https://github.com/CMA2401PT/neomega-viewer"
+                            >neOmega Viewer</a
+                        >
+                        的存档浏览方式，使用
+                        <a
+                            target="_blank"
+                            rel="noopener"
+                            href="https://github.com/CMA2401PT/neomega-r2"
+                            >neOmega R2</a
+                        >
+                        的射线渲染器绘制大范围地形与光影。
+                    </p>
+                    <p>
+                        本机和 HTTPS 页面优先使用 WebGPU，普通局域网 HTTP
+                        页面使用 WebGL。右上角的标签显示当前后端。
+                    </p>
+                    <p>
+                        本项目未直接使用以下项目的代码，但许多关键数据来自它们：
+                        <a
+                            target="_blank"
+                            rel="noopener"
+                            href="https://www.amuletmc.com/"
+                            >Amulet</a
+                        >、
+                        <a
+                            target="_blank"
+                            rel="noopener"
+                            href="https://geysermc.org/"
+                            >GeyserMC</a
+                        >
+                        和
+                        <a
+                            target="_blank"
+                            rel="noopener"
+                            href="https://github.com/zardoy/mc-assets"
+                            >MC-Assets</a
+                        >。 本项目已在 amuletmc.com 购买 Amulet
+                        授权（2026-11-07，订单号 KBPp706mBN）。<br />
+                        如果你还没有 Amulet 授权，也建议购买一份，支持 Amulet
+                        的持续开发。
+                    </p>
+                    <p>感谢魏信者、可白和 Amon 提供反馈和测试。</p>
+                    <a
+                        target="_blank"
+                        rel="noopener"
+                        href="https://github.com/CMA2401PT/neomega-viewer-r2"
+                        >查看 neOmega Viewer R2 源码</a
+                    >
+                </footer>
+            </div>
+        </dialog>
+        <section id="info" class="popover panel" popover>
+            <h2 id="info-name">场景信息</h2>
+            <p id="info-path"></p>
+            <label id="world-dimension-row" class="setting" hidden
+                >维度<select id="world-dimension"></select
+            ></label>
+            <p id="height-diagnostics" class="hint" hidden></p>
+            <dl id="details"></dl>
+            <p class="hint">
+                1 个 r2region 横向覆盖 8×8
+                个区块（chunk）。每个区块按高度分层，每 16 层是一个 16×16×16
+                方块的子区块（subchunk）。
+            </p>
+        </section>
+        <dialog id="link-dialog" class="panel">
+            <form method="dialog" class="picker-title">
+                <h2>连接数据源</h2>
+                <button
+                    id="link-dismiss"
+                    class="icon-button"
+                    title="关闭连接面板"
+                    aria-label="关闭连接面板"
+                >
+                    <svg><use href="#i-close" /></svg>
+                </button>
+            </form>
+            <p class="hint">
+                游戏机器人、服务器插件或存档服务提供的 R2Link
+                地址。连接成功后关闭当前存档。
+            </p>
+            <label class="row"
+                >地址<input id="link-url" placeholder="ws://host:port/r2link"
+            /></label>
+            <div class="row bottom">
+                <output id="link-message"></output
+                ><button id="link-start">连接</button>
+            </div>
+        </dialog>
+        <dialog id="files" class="panel">
+            <form method="dialog" class="picker-title">
+                <h2>打开存档或结构</h2>
+                <button
+                    id="picker-cancel"
+                    class="icon-button"
+                    title="关闭文件选择器"
+                    aria-label="关闭文件选择器"
+                >
+                    <svg><use href="#i-close" /></svg>
+                </button>
+            </form>
+            <div id="file-drop" hidden>
+                <strong id="file-drop-title"
+                    >将存档目录或文件拖到这里打开</strong
+                >
+                <span>一次一个，松开即打开；可先调整下方打开选项</span>
+            </div>
+            <div class="row">
+                <input
+                    id="directory"
+                    placeholder="存档或目录路径"
+                    aria-label="目录路径"
+                /><button id="browse">浏览</button>
+            </div>
+            <div class="row locations">
+                <button id="parent" title="上级目录">
+                    <svg><use href="#i-parent" /></svg>
+                </button>
+                <div id="roots"></div>
+            </div>
+            <div id="file-list"></div>
+            <details id="source-options">
+                <summary>打开选项</summary>
+                <div class="source-fields">
+                    <label class="setting"
+                        >维度<select id="source-dimension"></select
+                    ></label>
+                    <label class="setting"
+                        >Bedrock 邻接修复<input
+                            id="source-fix"
+                            type="checkbox"
+                            checked
+                    /></label>
+                    <label class="setting"
+                        >结构转换内存（MiB）<input
+                            id="source-memory"
+                            type="number"
+                            min="64"
+                            value="512"
+                    /></label>
+                    <label class="setting"
+                        >结构写出并发<input
+                            id="source-workers"
+                            type="number"
+                            min="0"
+                            value="0"
+                    /></label>
+                </div>
+                <p class="hint">并发填 0 自动选择。已有转换存档会直接复用。</p>
+            </details>
+            <p id="source-hint" class="hint"></p>
+            <div class="row bottom">
+                <output id="file-message"></output
+                ><button id="open-directory">打开当前存档目录</button>
+            </div>
+        </dialog>
+        <div id="landscape">
+            <strong>仅支持横屏</strong>
+            <p>请旋转设备或加宽窗口</p>
+            <button id="landscape-help">操作帮助</button>
         </div>
-        <p class="hint">并发填 0 自动选择。已有转换存档会直接复用。</p>
-      </details>
-      <p id="source-hint" class="hint"></p>
-      <div class="row bottom">
-        <output id="file-message"></output
-        ><button id="open-directory">打开当前存档目录</button>
-      </div>
-    </dialog>
-    <div id="landscape">
-      <strong>仅支持横屏</strong>
-      <p>请旋转设备或加宽窗口</p>
-    </div>
-    <script type="module" src="/r2/common_ui/boot.js" data-entry="/dist/app.js"></script>
-  </body>
+        <script
+            type="module"
+            src="/r2/common_ui/boot.js"
+            data-entry="/dist/app.js"
+        ></script>
+    </body>
 </html>

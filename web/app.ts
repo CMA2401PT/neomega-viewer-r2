@@ -13,6 +13,16 @@ import { startupStage } from "/r2/common_ui/startup.js";
 const useWebGPU = isSecureContext && !!navigator.gpu && location.protocol !== "r2:" && new URLSearchParams(location.search).get("backend") !== "webgl";
 
 
+// 帮助使用模态窗口，阅读时暂停场景键盘操作，关闭后由浏览器归还焦点。
+const help = element<HTMLDialogElement>("help");
+for (const id of ["help-open", "landscape-help"]) {
+  element(id).onclick = () => {
+    closePopovers();
+    help.showModal();
+  };
+}
+help.onkeydown = event => event.stopPropagation();
+
 const canvas = element<HTMLCanvasElement>("view");
 const camera = { position: [0, 80, 0], yaw: -0.7, pitch: -0.32 };
 const savedSettings = { ...JSON.parse(localStorage.getItem("neomega-r2-settings") || "{}") };
@@ -28,7 +38,8 @@ const settings: ViewSettings & { texturePath: string; textureSize: number } = {
   timeFlow: true,
   fog: true,
   stillAccumulation: false,
-  photoScale: 2,
+  photoScale: 2, photoSupersample: 1,
+  exportScale: 2, exportSupersample: 4,
   texturePath: "",
   textureSize: 128,
   ...savedSettings,

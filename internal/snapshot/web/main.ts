@@ -45,7 +45,8 @@ async function start() {
   const resources: Record<string, string> = JSON.parse(element("r2-resources").textContent);
   const settings: ViewSettings = {
     tier: "basic", stillAccumulation: false, nearRadius: 1, farRadius: 32,
-    speed: 32, resolution: "native", photoScale: 2, fog: true, time: 10, timeFlow: false,
+    speed: 32, resolution: "native", photoScale: 2, photoSupersample: 1,
+    exportScale: 2, exportSupersample: 4, fog: true, time: 10, timeFlow: false,
   };
   document.title = world.name + " · R2 建筑预览";
   element("building-name").textContent = world.name;

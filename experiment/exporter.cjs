@@ -62,7 +62,9 @@ async function check(file) {
     }
     assert.deepEqual(await page.evaluate(() => window.compiledTiers), ["basic"]);
     await page.locator("#map-open").click();
-    await page.locator("#map-close").click();
+    assert(await page.locator("#map-hud").isVisible());
+    await page.locator("#map-open").click();
+    assert(await page.locator("#map-hud").isHidden());
     await page.locator('[data-tier="shading"]').click();
     await page.waitForFunction(() => window.compiledTiers.includes("shading") &&
       document.getElementById("task-status").hidden, null, { timeout: 120000 });
