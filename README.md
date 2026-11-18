@@ -1,6 +1,6 @@
 # neOmega-R2
 
-**v0.1.0** · 在浏览器里用射线渲染 Minecraft Java 和基岩版存档。服务端读取世界，浏览器通过 WebGPU 或 WebGL 2 绘制。视野内的栏杆、楼梯、花和跨格模型都有完整的静态外观；靠近时还可以看到附魔台上活动的书。
+在浏览器里用射线渲染 Minecraft Java 和基岩版存档。服务端读取世界，浏览器通过 WebGPU 或 WebGL 2 绘制。视野内的栏杆、楼梯、花和跨格模型都有完整的静态外观；靠近时还可以看到附魔台上活动的书。
 
 项目沿用 neOmega Viewer 的存档浏览方式，渲染核心换成了 neOmega R2。默认场景 **Möbius** 是一圈海晶灯构成的莫比乌斯环，悬在傍晚的海面上。[前身 neOmega Viewer](https://github.com/CMA2401PT/neomega-viewer) · [neOmega R2 渲染核心](https://github.com/CMA2401PT/neomega-r2)
 
@@ -8,12 +8,12 @@
 
 从 [GitHub Releases](https://github.com/CMA2401PT/neomega-viewer-r2/releases) 选择对应系统的压缩包。程序已内嵌网页、渲染器和默认材质。
 
-| 系统 | 压缩包名称中的平台 | 解压后运行 |
-| --- | --- | --- |
-| Windows x64 | `windows-amd64` | 双击 `neOmega-R2.exe` |
-| macOS（Apple 芯片） | `macos-arm64` | `./neOmega-R2` |
-| Linux x86-64 | `linux-amd64` | `./neOmega-R2` |
-| Linux ARM64 | `linux-arm64` | `./neOmega-R2` |
+| 系统                | 压缩包名称中的平台 | 解压后运行            |
+| ------------------- | ------------------ | --------------------- |
+| Windows x64         | `windows-amd64`    | 双击 `neOmega-R2.exe` |
+| macOS（Apple 芯片） | `macos-arm64`      | `./neOmega-R2`        |
+| Linux x86-64        | `linux-amd64`      | `./neOmega-R2`        |
+| Linux ARM64         | `linux-arm64`      | `./neOmega-R2`        |
 
 启动后，打开终端中粗体白色的本机地址，默认是 <http://127.0.0.1:2412>。同一局域网里的设备可打开灰色的 IPv4 地址。**文件选择器浏览的是运行服务那台机器上的文件**，同一服务的页面共享当前存档。默认监听 `0.0.0.0:2412`，仅在本机使用可运行以下命令：
 
@@ -27,12 +27,12 @@
 
 点击底部文件夹，选中来源后点击“打开”。在打开选项里可以选择维度、调整结构转换预算或关闭 Bedrock 邻接修复。双击目录进入下一级，转换进度显示在面板内。点击底部的世界名可查看路径、维度和加载信息，关闭存档会回到 Möbius。
 
-| 来源 | 支持的输入 |
-| --- | --- |
-| Java 存档 | 世界目录、`level.dat`、PackFS 单文件（`.pack`、`.packfs`） |
-| Bedrock 存档 | 含 `db` 的世界目录或其 `level.dat` |
-| 转换为 Java 存档 | `.schem`、`.schematic`、`.litematic`、`.nbt` |
-| 转换或解包为 Bedrock 存档 | `.mcstructure`、`.mcworld` |
+| 来源                      | 支持的输入                                                 |
+| ------------------------- | ---------------------------------------------------------- |
+| Java 存档                 | 世界目录、`level.dat`、PackFS 单文件（`.pack`、`.packfs`） |
+| Bedrock 存档              | 含 `db` 的世界目录或其 `level.dat`                         |
+| 转换为 Java 存档          | `.schem`、`.schematic`、`.litematic`、`.nbt`               |
+| 转换或解包为 Bedrock 存档 | `.mcstructure`、`.mcworld`                                 |
 
 原生存档和 PackFS 以只读方式打开。通过 Viewer 打开结构文件时，会在源文件旁生成去掉扩展名的同名目录，例如 `城堡.schem` 对应 `城堡/`。已有可用存档会直接复用；源文件更新后，移走旧输出目录再打开即可重新转换。
 
@@ -48,12 +48,12 @@ Java 维度使用存档内的相对目录，包括主世界 `.`、下界 `DIM-1`
 
 ## 飞行、地图与渲染
 
-| 操作 | 鼠标与键盘 | 触屏 |
-| --- | --- | --- |
-| 转向 | 拖动场景 | 单指拖动场景 |
-| 水平移动 | WASD，方向跟随相机的水平朝向 | 左侧十字键 |
-| 升降 | 空格上升，Shift 下降 | 右侧上下键 |
-| 地图平移、旋转、缩放 | 左键拖动、右键拖动、滚轮 | 单指平移，双指旋转和缩放 |
+| 操作                 | 鼠标与键盘                   | 触屏                     |
+| -------------------- | ---------------------------- | ------------------------ |
+| 转向                 | 拖动场景                     | 单指拖动场景             |
+| 水平移动             | WASD，方向跟随相机的水平朝向 | 左侧十字键               |
+| 升降                 | 空格上升，Shift 下降         | 右侧上下键               |
+| 地图平移、旋转、缩放 | 左键拖动、右键拖动、滚轮     | 单指平移，双指旋转和缩放 |
 
 滚轮可沿视线前后移动，按住 Shift 滚动会加大步长。点击底部 X、Y、Z 读数可编辑坐标，回车跳转。地图上的方块也可以点选，“跳转”会把相机移到选中方块上方两格。左上角显示实际渲染分辨率和帧率，齿轮打开设置，设置保存在当前浏览器。
 
@@ -66,11 +66,11 @@ Java 维度使用存档内的相对目录，包括主世界 `.`、下界 `DIM-1`
 
 ### 保存画面和建筑
 
-| 入口 | 保存内容 | 何时完成 |
-| --- | --- | --- |
-| 右上角「导出当前画面」 | 当前预览档的 PNG，按屏幕像素的两倍边长、4×4 超采样渲染 | 采满后自动保存，超大画面会按纹理上限和 2400 万像素上限缩小 |
-| 右上角「拍照」 | 累积渲染的 PNG，最多 4 次反弹，照片默认使用渲染画面的两倍边长 | 画面持续收敛，满意时再次点击保存，Esc 放弃 |
-| 底部「导出离线 HTML」 | 当前维度的静态世界、视角和材质，可在另一台设备上继续浏览 | 区域写入完成后下载单个 HTML |
+| 入口                   | 保存内容                                                      | 何时完成                                                   |
+| ---------------------- | ------------------------------------------------------------- | ---------------------------------------------------------- |
+| 右上角「导出当前画面」 | 当前预览档的 PNG，按屏幕像素的两倍边长、4×4 超采样渲染        | 采满后自动保存，超大画面会按纹理上限和 2400 万像素上限缩小 |
+| 右上角「拍照」         | 累积渲染的 PNG，最多 4 次反弹，照片默认使用渲染画面的两倍边长 | 画面持续收敛，满意时再次点击保存，Esc 放弃                 |
+| 底部「导出离线 HTML」  | 当前维度的静态世界、视角和材质，可在另一台设备上继续浏览      | 区域写入完成后下载单个 HTML                                |
 
 ## 全屏地图
 
@@ -156,20 +156,20 @@ go run ./examples/java-source -world /path/to/world
 
 ### 代码位置
 
-| 位置 | 责任 |
-| --- | --- |
-| `neomega-converter-core/worldinput/` | 两个 viewer 共用的路径识别、结构准备、维度扫描、原生只读句柄与读取关闭屏障。 |
-| `internal/worldsource/` | 将原生来源接到 Java 区块；为 Bedrock 组合转换器和可选 fixer。 |
-| `internal/mobius/` | 海晶灯莫比乌斯环、开场取景与只读场景缓存。 |
-| `internal/worlddata/` | Java 区块变成 R2Link 区域与近景对象，固定高度裁剪。 |
-| `internal/server/` | 来源会话、区域缓存、HTTP 接口与 `/r2link` 数据源。切换世界后断开并拒绝旧会话。 |
-| `examples/java-source/` | 最小的外部 R2Link 数据源。 |
-| `internal/filebrowse/` | 服务端文件浏览、各类来源识别与材质包选择。 |
-| `web/app.ts`、`web/world-info.ts` | 切换本机或外部世界，应用材质包，显示来源与连接信息。 |
-| `web/picker.ts` | 服务端目录浏览、维度选择与转换进度。 |
-| `neomega-r2/r2/common_ui/` | 与静态 demo 共享的工具栏、读数、地图、坐标编辑、视图设置、飞行控制与绘制循环。 |
-| `neomega-r2` | 共享模型、世界会话、R2Link 数据源、纯数据场景准备、GPU 目录与统一求交。 |
-| `neomega-r2link` | R2Link 协议、Go 数据源会话、effector 与 block actor。 |
+| 位置                                 | 责任                                                                           |
+| ------------------------------------ | ------------------------------------------------------------------------------ |
+| `neomega-converter-core/worldinput/` | 两个 viewer 共用的路径识别、结构准备、维度扫描、原生只读句柄与读取关闭屏障。   |
+| `internal/worldsource/`              | 将原生来源接到 Java 区块；为 Bedrock 组合转换器和可选 fixer。                  |
+| `internal/mobius/`                   | 海晶灯莫比乌斯环、开场取景与只读场景缓存。                                     |
+| `internal/worlddata/`                | Java 区块变成 R2Link 区域与近景对象，固定高度裁剪。                            |
+| `internal/server/`                   | 来源会话、区域缓存、HTTP 接口与 `/r2link` 数据源。切换世界后断开并拒绝旧会话。 |
+| `examples/java-source/`              | 最小的外部 R2Link 数据源。                                                     |
+| `internal/filebrowse/`               | 服务端文件浏览、各类来源识别与材质包选择。                                     |
+| `web/app.ts`、`web/world-info.ts`    | 切换本机或外部世界，应用材质包，显示来源与连接信息。                           |
+| `web/picker.ts`                      | 服务端目录浏览、维度选择与转换进度。                                           |
+| `neomega-r2/r2/common_ui/`           | 与静态 demo 共享的工具栏、读数、地图、坐标编辑、视图设置、飞行控制与绘制循环。 |
+| `neomega-r2`                         | 共享模型、世界会话、R2Link 数据源、纯数据场景准备、GPU 目录与统一求交。        |
+| `neomega-r2link`                     | R2Link 协议、Go 数据源会话、effector 与 block actor。                          |
 
 本应用通过 converter 组合 [fix-utils](https://github.com/CMA2401PT/neomega-r2/blob/main/fix-utils/README.md)。核心 neomega-r2 保持独立，只接收 Java 状态对应的静态模型编号。远景与近景使用同一份来源索引，但 NBT 外观与特效仅由近景对象接口处理。
 
@@ -183,49 +183,28 @@ Go 入口 `cmd/viewer/main.go` 选择需要启用的 effector 和 block actor �
 
 ## 从源码构建
 
-Viewer 使用 Go 1.25.5 和 Node.js 24。Go 模块和网页构建均按同一工作区的相对路径寻找 R2、存档转换器等依赖。已有完整工作区时，直接从工作区根目录执行第二组命令。
+Viewer 使用 GNU Make、Go 1.25.5 和 Node.js 24。Go 模块和网页构建按相对路径寻找同一工作区中的 R2、存档转换器等依赖。
 
-在新的空目录中，可按发布工作流相同的依赖版本准备源码（Bash）：
+在新的空目录中，用 `make deps` 从 GitHub 检出[发布锁定的依赖版本](release-deps.lock)：
 
 ```sh
 mkdir -p apps
-git clone --branch v0.1.0 https://github.com/CMA2401PT/neomega-viewer-r2.git apps/neomega-viewer-r2
-GITHUB_WORKSPACE="$PWD" bash apps/neomega-viewer-r2/.github/release/checkout.sh
+git clone https://github.com/CMA2401PT/neomega-viewer-r2.git apps/neomega-viewer-r2
+make -C apps/neomega-viewer-r2 deps
 ```
 
-构建网页和离线播放器，再把它们嵌入 Viewer：
+在已有依赖的工作区，直接构建并运行 Viewer。`make build` 会先构建网页和离线播放器，再把它们嵌入可执行文件。
 
 ```sh
-npm ci --prefix neomega-r2/r2
-node apps/neomega-viewer-r2/scripts/build-web.mjs
 cd apps/neomega-viewer-r2
-go build -trimpath -o neOmega-R2 ./cmd/viewer
-./neOmega-R2
+make build
+./dist/neOmega-R2
 ```
 
-本地构建默认显示 `dev`。发布构建通过 Go 链接参数把 tag 写入 `-version`。开发页面时，`-web ./web` 可从磁盘读取宿主页面；更新共享 HUD、渲染核心或嵌入的离线播放器后，需要重新构建可执行文件。
+`make web` 只构建网页和离线播放器，之后可用 `go run ./cmd/viewer` 启动。`make test` 会构建网页并运行 Go 测试。开发页面时，`-web ./web` 可从磁盘读取宿主页面。更新共享 HUD、渲染核心或嵌入的离线播放器后，需要重新构建可执行文件。
 
-### 验收
+`make version` 显示当前提交上的版本 tag，没有 tag 时显示 `dev`。`make tag` 按本地最新正式 tag 递增补丁号，在当前提交上创建新 tag。可以用 `make tag VERSION=v0.2.0` 指定版本。
 
-在 Viewer 仓库根目录运行：
+依赖升级时，`make update-deps` 会读取各远端默认分支的最新提交，重新生成锁文件。在干净工作区用 `make deps` 验证新依赖能构建后，再提交锁文件。
 
-```sh
-go test ./...
-go vet ./...
-npm --prefix ../../neomega-r2/r2 run check
-npm --prefix ../../neomega-r2/r2 test
-```
-
-安装 Chrome 并准备好 Playwright 后，运行 `node experiment/exporter.cjs snapshot.html` 检查已导出的网页。脚本会在断网环境中直接打开文件，检查地图、首屏加载和着色器编译顺序。若 Playwright 安装在其他位置，可用 `PLAYWRIGHT_MODULE` 指定模块路径。真实存档、静态模型、界面截图和性能对照的运行方法见[浏览器验收说明](experiment/README.md)。
-
-## 发布新版本
-
-在 Viewer 仓库提交准备发布的代码，给该提交打上 `v` 开头的版本 tag 并推送。以下用下一版 `v0.1.1` 举例：
-
-```sh
-git push origin main
-git tag -a v0.1.1 -m "neOmega-R2 v0.1.1"
-git push origin v0.1.1
-```
-
-推送 tag 后可在 **Actions → Build neOmega-R2 release** 查看进度。四个平台全部编译成功后，压缩包会附到对应的 GitHub Release。每次发布使用新的 tag；需要升级渲染器或转换器时，先更新并提交[依赖版本](.github/release/checkout.sh)，再打 tag。[发布工作流](.github/workflows/release.yml)
+`make release` 将当前 tag 写入可执行文件，并把四个平台的压缩包放在 `dist/release/`。可以用 `make release VERSION=v0.1.1` 指定打包版本。推送 tag 后，[发布工作流](.github/workflows/release.yml)会使用同一个目标打包。

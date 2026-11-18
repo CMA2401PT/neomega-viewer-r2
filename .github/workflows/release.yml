@@ -19,7 +19,7 @@ jobs:
           path: apps/neomega-viewer-r2
           persist-credentials: false
       - name: Fetch pinned build dependencies
-        run: bash apps/neomega-viewer-r2/.github/release/checkout.sh
+        run: make -C apps/neomega-viewer-r2 deps
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
@@ -29,38 +29,13 @@ jobs:
         with:
           go-version-file: apps/neomega-viewer-r2/go.mod
           cache-dependency-path: apps/neomega-viewer-r2/go.sum
-      - name: Build the viewer and offline web assets
-        run: |
-          npm ci --prefix neomega-r2/r2
-          node apps/neomega-viewer-r2/scripts/build-web.mjs
       - name: Compile and package the four platforms
         working-directory: apps/neomega-viewer-r2
-        env:
-          CGO_ENABLED: '0'
-        run: |
-          mkdir -p "$GITHUB_WORKSPACE/release"
-          for target in darwin/arm64 windows/amd64 linux/amd64 linux/arm64; do
-            os=${target%/*}
-            arch=${target#*/}
-            binary=neOmega-R2
-            platform=$os
-            if [[ $os == windows ]]; then binary+=.exe; fi
-            if [[ $os == darwin ]]; then platform=macos; fi
-            archive="$GITHUB_WORKSPACE/release/neOmega-R2-$GITHUB_REF_NAME-$platform-$arch"
-            bin_dir="$RUNNER_TEMP/$os-$arch"
-            mkdir -p "$bin_dir"
-            GOOS=$os GOARCH=$arch go build -mod=readonly -trimpath \
-              -ldflags="-s -w -X main.version=$GITHUB_REF_NAME" -o "$bin_dir/$binary" ./cmd/viewer
-            if [[ $os == windows ]]; then
-              (cd "$bin_dir" && zip -q "$archive.zip" "$binary")
-            else
-              tar -C "$bin_dir" -czf "$archive.tar.gz" "$binary"
-            fi
-          done
+        run: make release VERSION="$GITHUB_REF_NAME"
       - uses: actions/upload-artifact@v6
         with:
           name: release-packages
-          path: release/*
+          path: apps/neomega-viewer-r2/dist/release/*
           if-no-files-found: error
           compression-level: 0
 
