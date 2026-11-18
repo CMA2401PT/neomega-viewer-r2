@@ -22,13 +22,14 @@ async function check(file) {
     await page.addInitScript(() => {
       // 记录 GPU 实际收到的档位；按钮的初始选中状态无法检出后台预编译。
       window.compiledTiers = [];
-      const original = GPUDevice.prototype.createRenderPipelineAsync;
-      GPUDevice.prototype.createRenderPipelineAsync = function(descriptor) {
-        if (["voxel", "basic", "shading", "accumulation", "photo"].includes(descriptor.label)) {
-          window.compiledTiers.push(descriptor.label);
-        }
-        return original.call(this, descriptor);
-      };
+      for (const method of ["createRenderPipelineAsync", "createComputePipelineAsync"]) {
+        const original = GPUDevice.prototype[method];
+        GPUDevice.prototype[method] = function(descriptor) {
+          if (["voxel", "basic", "shading", "accumulation", "photo"].includes(descriptor.label))
+            window.compiledTiers.push(descriptor.label);
+          return original.call(this, descriptor);
+        };
+      }
     });
     await page.goto(pathToFileURL(path.resolve(file)).href);
     await page.waitForFunction(() =>
