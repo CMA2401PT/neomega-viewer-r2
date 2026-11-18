@@ -56,7 +56,7 @@ type World struct {
 
 // sceneData 保存按区域分好的 section 与占用表。
 type sceneData struct {
-	regions map[[2]int]r2link.Region
+	regions map[[2]int]r2link.R2Region
 	chunks  r2link.ChunkIndex
 }
 
@@ -77,12 +77,12 @@ func New() *World {
 			}
 			return 0
 		})
-		data := sceneData{regions: map[[2]int]r2link.Region{}, chunks: r2link.ChunkIndex{}}
+		data := sceneData{regions: map[[2]int]r2link.R2Region{}, chunks: r2link.ChunkIndex{}}
 		for _, position := range positions {
 			blocks := sections[position]
 			key := [2]int{position[0] >> 3, position[2] >> 3}
 			region := data.regions[key]
-			region.Sections = append(region.Sections, r2link.Section{
+			region.Sections = append(region.Sections, r2link.Subchunk{
 				Position: position,
 				Bits:     blocks.Level,
 				Palette:  blocks.GetUsedPalette(),
@@ -96,7 +96,7 @@ func New() *World {
 }
 
 // Region 与存档共用区域格式，浏览器无需识别来源类型。
-func (w *World) Region(_ context.Context, x, z int) (r2link.Region, error) {
+func (w *World) Region(_ context.Context, x, z int) (r2link.R2Region, error) {
 	return w.data().regions[[2]int{x, z}], nil
 }
 

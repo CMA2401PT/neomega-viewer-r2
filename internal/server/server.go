@@ -51,7 +51,7 @@ type OpenOptions struct {
 
 // worldSource 只要求会话真正读取的内容，使内置场景与存档共享缓存和 R2Link 路径。
 type worldSource interface {
-	Region(context.Context, int, int) (r2link.Region, error)
+	Region(context.Context, int, int) (r2link.R2Region, error)
 	Chunks(context.Context) (r2link.ChunkIndex, error)
 	Objects(context.Context, int, int, [3]int, int, effector.Registry, blockactor.Registry) ([]object.Descriptor, error)
 	Close() error
@@ -60,7 +60,7 @@ type worldSource interface {
 // cacheEntry 将区域与 LRU 位置关联，限制每个会话的缓存容量。
 type cacheEntry struct {
 	key    [2]int
-	region r2link.Region
+	region r2link.R2Region
 	bytes  int
 }
 
@@ -348,7 +348,7 @@ func (l *linkSource) read(ctx context.Context, build func() error) error {
 }
 
 // Region 使用会话内的 LRU 缓存，同一区域重复订阅时不再读盘。
-func (l *linkSource) Region(ctx context.Context, x, z int) (region r2link.Region, err error) {
+func (l *linkSource) Region(ctx context.Context, x, z int) (region r2link.R2Region, err error) {
 	current, key := l.session, [2]int{x, z}
 	err = l.read(ctx, func() error {
 		current.mu.Lock()

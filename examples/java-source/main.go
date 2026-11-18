@@ -83,10 +83,10 @@ type javaSource struct {
 	reader *worldinput.JavaReader
 }
 
-// Region 读取区域内的 8×8 个区块，把每个 section 的方块状态换成哈希后打包。
-// 查看器只显示 Y -64～447，范围外的 section 计入 Clipped。
-func (s *javaSource) Region(ctx context.Context, rx, rz int) (r2link.Region, error) {
-	var region r2link.Region
+// Region 读取r2region 内的 8×8 个区块，把每个子区块 的方块状态换成哈希后打包。
+// 查看器只显示 Y -64～447，范围外的子区块 计入 Clipped。
+func (s *javaSource) Region(ctx context.Context, rx, rz int) (r2link.R2Region, error) {
+	var region r2link.R2Region
 	for x := rx * 8; x < rx*8+8; x++ {
 		for z := rz * 8; z < rz*8+8; z++ {
 			chunk, err := s.read(ctx, celler.ChunkPos{X: int32(x), Z: int32(z)})

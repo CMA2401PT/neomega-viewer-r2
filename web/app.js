@@ -652,24 +652,24 @@ function frame(now) {
       hud.loading(stats, world.connection);
       const clipped = source.clippedSections;
       element("height-diagnostics").hidden = clipped === 0;
-      element("height-diagnostics").textContent = `有 ${clipped} 个 section 超出可显示高度（Y -64～447，按已收到的区域统计）`;
+      element("height-diagnostics").textContent = `有 ${clipped} 个子区块（subchunk）超出可显示高度（Y -64～447，按已收到的 r2region 统计）`;
       hud.details([
         ["来源", world.kind || "内置场景"],
         ["预览渲染器", TIER_NAMES[shownTier]],
         ...(world.reusedStructure ? [["结构输出", "复用已有存档"]] : []),
-        ["近景半径", `${settings.nearRadius} 区块`],
-        ["远景半径", `${settings.farRadius} 区块`],
+        ["近景半径", `${settings.nearRadius} 区块（chunk）`],
+        ["远景半径", `${settings.farRadius} 区块（chunk）`],
         [
           "窗口覆盖",
-          `${settings.farRadius * 32}×${settings.farRadius * 32}×512`,
+          `${settings.farRadius * 32}×${settings.farRadius * 32}×512 方块`,
         ],
-        ["静态 section", String(stats.sections)],
-        ["已发布区域", `${stats.loaded}/${stats.wanted}`],
-        ["待更新 / 失败", `${stats.pending} / ${stats.failed}`],
+        ["静态子区块（subchunk）", String(stats.sections)],
+        ["已发布 r2region", `${stats.loaded}/${stats.wanted}`],
+        ["待更新 / 失败 r2region", `${stats.pending} / ${stats.failed}`],
         ["特殊对象", String(stats.objects)],
         ...(stats.unknownBlocks ? [["未知方块", String(stats.unknownBlocks)]] : []),
         ["累计传输", `${(stats.bytes / 1024 ** 2).toFixed(1)} MiB`],
-        ["区域显存", `${(stats.usedBytes / 1024 ** 2).toFixed(1)} MiB`],
+        ["r2region 显存", `${(stats.usedBytes / 1024 ** 2).toFixed(1)} MiB`],
         ["GPU 纹理", `${(renderer.textureBytes / 1024 ** 2).toFixed(1)} MiB`],
         ["GPU 中位数", `${median?.toFixed(2) || "…"} ms`],
         ["实际像素", `${width}×${height}`],

@@ -315,7 +315,7 @@ export class FullscreenMap {
       this.select(null);
       this.center = point;
       this.pending = { camera, pixel };
-      element("map-selection").textContent = "等待所选区域加载…";
+      element("map-selection").textContent = "等待所选位置的 r2region 加载…";
       return;
     }
     this.select(this.renderer.pick(camera, pixel));

@@ -1,4 +1,4 @@
-// Package worlddata 把存档读出的 Java 区块变成 R2Link 的区域与近景对象。
+// Package worlddata 把存档读出的 Java 区块组织为 r2region，并提供近景对象。
 package worlddata
 
 import (
@@ -17,7 +17,7 @@ type World struct {
 	ScanChunks func(context.Context) ([]celler.ChunkPos, error)
 }
 
-// visible 是可显示的 section 高度：Y -64～447。
+// visible 判断子区块的高度索引是否落在可显示范围内：Y -64～447。
 func visible(y int32) bool { return y >= -4 && y < 28 }
 
 // Chunks 复用原生来源的坐标扫描，地图占用表与区域下载使用同一维度。
@@ -33,9 +33,10 @@ func (w *World) Chunks(ctx context.Context) (r2link.ChunkIndex, error) {
 	return index, nil
 }
 
-// Region 把调色板条目换成方块哈希；可显示高度之外的 section 只计数，全是空气的 section 省略。
-func (w *World) Region(ctx context.Context, rx, rz int) (r2link.Region, error) {
-	var region r2link.Region
+// Region 遍历这个 r2region 横向覆盖的 8×8 个区块（chunk），收集每个区块已有的子区块（subchunk）。
+// 调色板条目换成方块哈希；超出可显示高度的子区块只计数，全空气子区块省略。
+func (w *World) Region(ctx context.Context, rx, rz int) (r2link.R2Region, error) {
+	var region r2link.R2Region
 	for x := rx * 8; x < (rx+1)*8; x++ {
 		for z := rz * 8; z < (rz+1)*8; z++ {
 			if err := ctx.Err(); err != nil {
@@ -49,15 +50,15 @@ func (w *World) Region(ctx context.Context, rx, rz int) (r2link.Region, error) {
 				continue
 			}
 			for _, y := range slices.Sorted(maps.Keys(chunk.Sections)) {
-				section := chunk.Sections[y]
-				if section.Blocks == nil {
+				subchunk := chunk.Sections[y]
+				if subchunk.Blocks == nil {
 					continue
 				}
 				if !visible(y) {
 					region.Clipped++
 					continue
 				}
-				palette := section.Blocks.GetUsedPalette()
+				palette := subchunk.Blocks.GetUsedPalette()
 				mapped := make([]uint32, len(palette))
 				nonAir := false
 				for i, state := range palette {
@@ -67,11 +68,11 @@ func (w *World) Region(ctx context.Context, rx, rz int) (r2link.Region, error) {
 				if !nonAir {
 					continue
 				}
-				region.Sections = append(region.Sections, r2link.Section{
+				region.Sections = append(region.Sections, r2link.Subchunk{
 					Position: [3]int{x, int(y), z},
-					Bits:     section.Blocks.Level,
+					Bits:     subchunk.Blocks.Level,
 					Palette:  mapped,
-					Words:    section.Blocks.Data,
+					Words:    subchunk.Blocks.Data,
 				})
 			}
 		}

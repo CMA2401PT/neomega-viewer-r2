@@ -213,7 +213,7 @@ export function createHUD({ settings, jump, changed }) {
           ? connection.state === "reconnecting"
             ? "连接已断开，保留最后画面；每 3 秒重试"
             : "数据源已断开"
-          : `近景对象准备 ${stats.nearPending} 区域 · 远景覆盖 ${stats.loaded}/${stats.wanted}`;
+          : `近景对象准备 ${stats.nearPending} 个 r2region · 远景覆盖 ${stats.loaded}/${stats.wanted} 个 r2region`;
       } else if (wasLoading) {
         element("loading").textContent = "已加载";
         loadingTimer = setTimeout(
