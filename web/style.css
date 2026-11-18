@@ -85,6 +85,9 @@ dialog::backdrop {
   min-width: 0;
   font: 12px var(--mono);
 }
+#file-search { flex: 1; min-width: 0; }
+.file-tools { margin-top: 8px; }
+#local-drop { white-space: nowrap; }
 #roots {
   display: flex;
   gap: 5px;
@@ -109,6 +112,7 @@ dialog::backdrop {
   padding: 9px 10px;
   border-bottom: 1px solid #edf0f0;
 }
+.file[hidden] { display: none; }
 .kind {
   font-size: 11px;
   color: #7a8989;

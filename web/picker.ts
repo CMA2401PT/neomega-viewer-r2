@@ -3,7 +3,7 @@ import { dimensionName, type OpenWorld, type Progress, type ViewerWorld } from "
 
 type Kind = "world" | "pack";
 interface Entry { name: string; path: string; kind: string; directory: boolean; openable: boolean }
-interface Listing { path: string; parent: string; selected: string; kind: string; roots: Entry[]; entries: Entry[] }
+interface Listing { path: string; parent: string; selected: string; kind: string; roots: Entry[]; entries: Entry[]; nativeDrop: boolean }
 interface PickerOptions { kind?: Kind; choose?: OpenWorld; world?: Partial<ViewerWorld> }
 
 declare global {
@@ -14,17 +14,18 @@ declare global {
 export function createPicker(openWorld: OpenWorld) {
   const dialog = document.querySelector<HTMLDialogElement>("#files")!,
     input = document.querySelector<HTMLInputElement>("#directory")!,
+    filter = document.querySelector<HTMLInputElement>("#file-search")!,
+    nativeDropButton = document.querySelector<HTMLButtonElement>("#local-drop")!,
     list = document.querySelector<HTMLElement>("#file-list")!,
     message = document.querySelector<HTMLOutputElement>("#file-message")!,
     dimension = document.querySelector<HTMLSelectElement>("#source-dimension")!;
   let listing: Listing, selected = "", kind: Kind = "world", onChoose = openWorld;
   let currentWorld: Partial<ViewerWorld> = {};
   let opening: AbortController | null = null, browsing: AbortController | null = null;
-  let dropping = false;
+  let dropping: AbortController | null = null;
   const dropZone = document.querySelector<HTMLElement>("#file-drop")!;
   const desktopFiles = window.desktopFiles;
   dropZone.hidden = typeof desktopFiles?.pathForFile !== "function";
-  const paths = { world: "", pack: "" };
   const labels: Record<string, string> = {
     directory: "Java 存档", bedrock: "Bedrock 存档", folder: "目录",
     pack: "Java PackFS", texture: "材质包", level: "存档入口",
@@ -54,7 +55,10 @@ export function createPicker(openWorld: OpenWorld) {
     try {
       const response = await fetch("/api/files?kind=" + kind + "&path=" + encodeURIComponent(path), { signal: controller.signal });
       if (!response.ok) throw Error(await response.text());
-      listing = await response.json();
+      const result: Listing = await response.json();
+      if (controller.signal.aborted || !dialog.open) return false;
+      listing = result;
+      nativeDropButton.hidden = !listing.nativeDrop;
       selected = listing.selected;
       input.value = selected || listing.path;
       setDimensions(["bedrock", "mcstructure", "mcworld"].includes(listing.kind)
@@ -90,6 +94,7 @@ export function createPicker(openWorld: OpenWorld) {
         row.ondblclick = () => entry.directory ? browse(entry.path) : choose(entry.path);
         list.append(row);
       }
+      filter.value = "";
       message.textContent = listing.entries.length + " 个项目";
       return true;
     } catch (error) {
@@ -126,7 +131,6 @@ export function createPicker(openWorld: OpenWorld) {
         structureMemoryMiB: Number(document.querySelector<HTMLInputElement>("#source-memory")!.value),
         structureWorkers: Number(document.querySelector<HTMLInputElement>("#source-workers")!.value),
       }, progress, opening.signal);
-      paths[kind] = path;
       opening = null;
       dialog.close();
     } catch (error) {
@@ -137,9 +141,50 @@ export function createPicker(openWorld: OpenWorld) {
     }
   }
   dialog.addEventListener("close", () => {
+    if (dialog.open) return;
     opening?.abort();
     browsing?.abort();
+    dropping?.abort();
     dropZone.classList.remove("drag-over");
+  });
+  filter.addEventListener("input", () => {
+    const query = filter.value.trim().toLocaleLowerCase();
+    for (const row of list.children) row.toggleAttribute("hidden", !row.textContent!.toLocaleLowerCase().includes(query));
+  });
+  async function openDroppedPath(getPath: (signal: AbortSignal) => string | Promise<string>) {
+    if (!dialog.open || opening || dropping) return;
+    const controller = new AbortController();
+    dropping = controller;
+    nativeDropButton.disabled = true;
+    dropZone.setAttribute("aria-busy", "true");
+    try {
+      const path = await getPath(controller.signal);
+      if (controller.signal.aborted || !dialog.open) return;
+      if (!path) { message.textContent = "已取消"; return; }
+      const chosenDimension = dimension.value;
+      if (!await browse(path) || controller.signal.aborted || !dialog.open) return;
+      if (listing.kind === "folder" || listing.kind === "unknown") {
+        message.textContent = "这不是可打开的存档或材质包。";
+        return;
+      }
+      if ([...dimension.options].some((option) => option.value === chosenDimension)) dimension.value = chosenDimension;
+      await choose(input.value);
+    } catch (error) {
+      if (!controller.signal.aborted && dialog.open) message.textContent = String(error);
+    } finally {
+      if (dropping === controller) {
+        dropping = null;
+        nativeDropButton.disabled = false;
+        dropZone.removeAttribute("aria-busy");
+      }
+    }
+  }
+  nativeDropButton.onclick = () => openDroppedPath(async (signal) => {
+    message.textContent = "等待从资源管理器拖入…";
+    const response = await fetch("/api/files/local-drop", { method: "POST", signal });
+    if (!response.ok) throw Error(await response.text());
+    const { path } = await response.json() as { path: string };
+    return path;
   });
   dropZone.addEventListener("dragover", (event) => {
     event.preventDefault();
@@ -147,7 +192,7 @@ export function createPicker(openWorld: OpenWorld) {
     if (!opening && !dropping) dropZone.classList.add("drag-over");
   });
   dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
-  dropZone.addEventListener("drop", async (event) => {
+  dropZone.addEventListener("drop", (event) => {
     event.preventDefault();
     dropZone.classList.remove("drag-over");
     if (opening || dropping || !desktopFiles || !event.dataTransfer) return;
@@ -156,21 +201,11 @@ export function createPicker(openWorld: OpenWorld) {
       message.textContent = "请一次拖入一个目录或文件。";
       return;
     }
-    dropping = true;
-    dropZone.setAttribute("aria-busy", "true");
-    try {
+    void openDroppedPath(() => {
       const path = desktopFiles.pathForFile(files[0]);
       if (!path) throw Error("无法读取路径，请从文件资源管理器拖入本地目录或文件。");
-      const chosenDimension = dimension.value;
-      // 先由 Go 识别来源种类、规范化路径，再走原有打开、转换与取消流程。
-      if (!await browse(path) || !dialog.open) return;
-      if ([...dimension.options].some((option) => option.value === chosenDimension)) dimension.value = chosenDimension;
-      await choose(input.value);
-    } catch (error) { message.textContent = String(error); }
-    finally {
-      dropping = false;
-      dropZone.setAttribute("aria-busy", "false");
-    }
+      return path;
+    });
   });
   document.querySelector<HTMLButtonElement>("#browse")!.onclick = () => browse(input.value);
   input.addEventListener("input", () => { setDimensions([""]); });
@@ -180,6 +215,7 @@ export function createPicker(openWorld: OpenWorld) {
   document.querySelector<HTMLButtonElement>("#parent")!.onclick = () => browse(listing.parent);
   document.querySelector<HTMLButtonElement>("#open-directory")!.onclick = () => choose(input.value);
   return ({ kind: nextKind = "world", choose: callback = openWorld, world = {} }: PickerOptions = {}) => {
+    dropping?.abort();
     kind = nextKind;
     currentWorld = world;
     onChoose = callback;
@@ -189,6 +225,7 @@ export function createPicker(openWorld: OpenWorld) {
     document.querySelector<HTMLInputElement>("#source-memory")!.value = String(world.structureMemoryMiB || 512);
     document.querySelector<HTMLInputElement>("#source-workers")!.value = String(world.structureWorkers || 0);
     document.querySelector<HTMLElement>("#source-options")!.hidden = kind === "pack";
+    nativeDropButton.textContent = kind === "pack" ? "从资源管理器拖入材质包" : "从资源管理器拖入存档或结构";
     document.querySelector<HTMLElement>("#file-drop-title")!.textContent = kind === "pack"
       ? "将材质包 ZIP 或目录拖到这里使用"
       : "将存档目录或文件拖到这里打开";
@@ -198,6 +235,6 @@ export function createPicker(openWorld: OpenWorld) {
       ? "选择 zip 或包含 assets 的目录，也可直接输入路径。"
       : "选择文件后点击打开；双击存档目录可浏览内部。结构文件转换到旁边的同名目录。";
     dialog.showModal();
-    browse(world.path || paths[kind]);
+    browse();
   };
 }

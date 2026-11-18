@@ -274,8 +274,10 @@ func (s *Server) Handler(web fs.FS) http.Handler {
 			http.Error(w, err.Error(), 400)
 			return
 		}
+		listing.NativeDrop = loopbackBrowser(r) && filebrowse.NativeDropAvailable()
 		writeJSON(w, listing)
 	})
+	mux.HandleFunc("POST /api/files/local-drop", localDrop)
 	mux.HandleFunc("POST /api/textures", func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
 			Path    string `json:"path"`

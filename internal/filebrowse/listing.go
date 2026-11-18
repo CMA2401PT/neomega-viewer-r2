@@ -21,24 +21,30 @@ type Entry struct {
 
 // Listing 同时返回选中的文件与所在目录，粘贴文件路径后仍可浏览相邻来源。
 type Listing struct {
-	Kind     string  `json:"kind"`
-	Path     string  `json:"path"`
-	Parent   string  `json:"parent"`
-	Selected string  `json:"selected"`
-	Roots    []Entry `json:"roots"`
-	Entries  []Entry `json:"entries"`
+	Kind       string  `json:"kind"`
+	Path       string  `json:"path"`
+	Parent     string  `json:"parent"`
+	Selected   string  `json:"selected"`
+	Roots      []Entry `json:"roots"`
+	Entries    []Entry `json:"entries"`
+	NativeDrop bool    `json:"nativeDrop"`
 }
 
 // List 由 Go 处理盘符、父目录和符号链接，网页只使用返回的完整路径。
 func List(path string, packs bool) (Listing, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return Listing{}, err
-	}
+	home, _ := os.UserHomeDir()
+	work, workErr := os.Getwd()
+	path = strings.Trim(strings.TrimSpace(path), "\"")
 	if path == "" {
-		path = home
+		path = work
+		if workErr != nil {
+			if home == "" {
+				return Listing{}, workErr
+			}
+			path = home
+		}
 	}
-	path, err = filepath.Abs(strings.Trim(strings.TrimSpace(path), "\""))
+	path, err := filepath.Abs(path)
 	if err != nil {
 		return Listing{}, err
 	}
@@ -50,10 +56,18 @@ func List(path string, packs bool) (Listing, error) {
 	if err != nil {
 		return Listing{}, err
 	}
-	out := Listing{Selected: selected, Path: path, Parent: filepath.Dir(path), Entries: []Entry{}, Roots: []Entry{{Name: "主目录", Path: home}}}
-	out.Kind = worldinput.DirectoryKind(path)
-	if selected != "" && worldinput.FileKind(selected) != "level" {
-		out.Kind = worldinput.FileKind(selected)
+	out := Listing{Selected: selected, Path: path, Parent: filepath.Dir(path), Entries: []Entry{}, Roots: []Entry{}}
+	if workErr == nil {
+		out.Roots = append(out.Roots, Entry{Name: "工作目录", Path: work})
+	}
+	if home != "" && home != work {
+		out.Roots = append(out.Roots, Entry{Name: "主目录", Path: home})
+	}
+	out.Kind = directoryKind(path, packs)
+	if selected != "" {
+		if kind := fileKind(selected, packs); kind != "level" {
+			out.Kind = kind
+		}
 	}
 	if runtime.GOOS == "windows" {
 		for c := 'A'; c <= 'Z'; c++ {
@@ -72,23 +86,11 @@ func List(path string, packs bool) (Listing, error) {
 			continue
 		}
 		value := Entry{Name: entry.Name(), Path: full, Directory: stat.IsDir()}
-		if packs {
-			if stat.IsDir() {
-				_, err := os.Stat(filepath.Join(full, "assets"))
-				value.Kind, value.Openable = "folder", err == nil
-				if value.Openable {
-					value.Kind = "texture"
-				}
-			} else if strings.EqualFold(filepath.Ext(full), ".zip") {
-				value.Kind, value.Openable = "texture", true
-			} else {
-				continue
-			}
-		} else if stat.IsDir() {
-			value.Kind = worldinput.DirectoryKind(full)
+		if stat.IsDir() {
+			value.Kind = directoryKind(full, packs)
 			value.Openable = value.Kind != "folder"
 		} else {
-			value.Kind = worldinput.FileKind(full)
+			value.Kind = fileKind(full, packs)
 			if value.Kind == "unknown" {
 				continue
 			}
@@ -96,6 +98,34 @@ func List(path string, packs bool) (Listing, error) {
 		}
 		out.Entries = append(out.Entries, value)
 	}
-	slices.SortFunc(out.Entries, func(a, b Entry) int { return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
+	slices.SortFunc(out.Entries, func(a, b Entry) int {
+		if a.Openable != b.Openable {
+			if a.Openable {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
 	return out, nil
+}
+
+func directoryKind(path string, packs bool) string {
+	if !packs {
+		return worldinput.DirectoryKind(path)
+	}
+	if stat, err := os.Stat(filepath.Join(path, "assets")); err == nil && stat.IsDir() {
+		return "texture"
+	}
+	return "folder"
+}
+
+func fileKind(path string, packs bool) string {
+	if !packs {
+		return worldinput.FileKind(path)
+	}
+	if strings.EqualFold(filepath.Ext(path), ".zip") {
+		return "texture"
+	}
+	return "unknown"
 }

@@ -88,7 +88,7 @@
       </form>
       <div id="file-drop" hidden>
         <strong id="file-drop-title">将存档目录或文件拖到这里打开</strong>
-        <span>一次一个，松开即打开；可先调整下方打开选项</span>
+        <span>桌面宿主支持直接拖入；读取原路径，不上传或复制文件</span>
       </div>
       <div class="row">
         <input
@@ -96,6 +96,10 @@
           placeholder="存档或目录路径"
           aria-label="目录路径"
         /><button id="browse">浏览</button>
+      </div>
+      <div class="row file-tools">
+        <input id="file-search" type="search" placeholder="筛选当前目录中的存档、结构或文件夹" aria-label="筛选当前目录" />
+        <button id="local-drop" hidden>从资源管理器拖入</button>
       </div>
       <div class="row locations">
         <button id="parent" title="上级目录">
