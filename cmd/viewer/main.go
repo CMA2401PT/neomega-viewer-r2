@@ -57,6 +57,10 @@ func run() error {
 		fmt.Println(version)
 		return nil
 	}
+	colored := !*desktopHost && terminalColors()
+	if !*desktopHost {
+		printBanner(os.Stdout, version, colored)
+	}
 	if *desktopHost {
 		// 宿主独占 stdin 管道；正常关闭或宿主崩溃都通过 EOF 释放服务。
 		go func() {
@@ -112,10 +116,12 @@ func run() error {
 			return err
 		}
 	} else {
-		fmt.Println("本地  " + url)
+		fmt.Println("  本地    " + terminalText(colored, "1;97", url))
 		for _, ip := range lanAddresses(address.IP) {
-			fmt.Printf("局域网  http://%s:%d\n", ip, address.Port)
+			fmt.Println(terminalText(colored, "38;5;245", fmt.Sprintf("  局域网  http://%s:%d", ip, address.Port)))
 		}
+		fmt.Println("\n  WebGPU 和 WebGL 都用显卡绘制世界。WebGPU 是 Viewer 的默认后端，可用于本地地址和 HTTPS。")
+		fmt.Println("  WebGL 是较早的浏览器图形接口，通过普通局域网 HTTP 地址访问时使用它。")
 	}
 	select {
 	case err := <-done:

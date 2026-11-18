@@ -1,0 +1,165 @@
+package main
+
+import (
+	"fmt"
+	"io"
+	"math"
+	"os"
+	"strings"
+)
+
+// 开场画面与网页默认场景是同一幅画：海面升起的莫比乌斯环，扭转处收成一条细线。
+const (
+	bannerWidth  = 76
+	bannerHeight = 21
+	// 海平线所在行，以上是环，以下是倒影。
+	bannerHorizon = 14
+)
+
+// bannerCell 是一格字符及其 256 色编号，0 表示不着色。
+type bannerCell struct {
+	char  rune
+	color int
+}
+
+func renderBanner() [][]bannerCell {
+	// 坐标以环半径为单位，终端字符高宽约为 2:1，所以 y 方向每行跨两倍距离。
+	const (
+		radius  = 1.0
+		width   = 0.34
+		centerY = 0.5
+		twist   = math.Pi / 7
+		unit    = 4.6 / bannerWidth
+	)
+	ramp := []rune(" .:-=+*#%@")
+	grid := make([][]bannerCell, bannerHeight)
+	for row := range grid {
+		grid[row] = make([]bannerCell, bannerWidth)
+		for col := range grid[row] {
+			x := (float64(col) - bannerWidth/2 + 6.5) * unit
+			y := float64(bannerHorizon-row) * unit * 2
+			grid[row][col] = bannerCell{char: ' '}
+			mirrored := y < 0
+			if mirrored {
+				// 倒影：镜像后随行号左右摆动，越远离海平线摆得越厉害，也越暗。
+				depth := float64(row - bannerHorizon)
+				x += 0.07 * depth * math.Sin(depth*1.7+x*2.4)
+				y = -y
+			}
+			angle := math.Atan2(y-centerY, x)
+			// 带子随圆周转半圈，正面看到的宽度按扭转相位变化，扭转点只剩一条线。
+			band := width * math.Max(math.Sqrt(math.Abs(math.Sin((angle-twist)/2))), 0.2)
+			distance := math.Abs(math.Hypot(x, y-centerY)-radius) / (band / 2)
+			if distance < 1 {
+				level := 1 - distance*distance
+				// 环从水线的暖色升到顶端的冰白。
+				rise := math.Min(math.Max((y)/(centerY+radius), 0), 1)
+				palette := []int{209, 215, 223, 230, 195, 159}
+				color := palette[int(rise*float64(len(palette)-1)+0.5)]
+				if mirrored {
+					depth := float64(row-bannerHorizon) / float64(bannerHeight-bannerHorizon)
+					color = []int{153, 111, 74, 67, 60}[min(int(depth*5), 4)]
+					// 倒影只用横向的笔画，像被波纹切成一段段的光。
+					if math.Sin(float64(col)*0.9+float64(row)*2.3) > 0.55 {
+						continue
+					}
+					grid[row][col] = bannerCell{char: []rune("-~=≈")[min(int(level*(1-0.5*depth)*4), 3)], color: color}
+					continue
+				}
+				grid[row][col] = bannerCell{char: ramp[1+int(level*float64(len(ramp)-2)+0.5)], color: color}
+				continue
+			}
+			switch {
+			case row == bannerHorizon:
+				// 海平线中间亮、两端熄灭。
+				fade := math.Abs(x) / 2.2
+				if fade < 1 {
+					grid[row][col] = bannerCell{char: []rune("━─╌")[min(int(fade*3), 2)], color: []int{230, 152, 67}[min(int(fade*3), 2)]}
+				}
+			case mirrored:
+				// 远离倒影的海面只留稀疏的涟漪。
+				depth := float64(row - bannerHorizon)
+				ripple := math.Sin(float64(col)*0.23+depth*2.1) + 0.8*math.Sin(float64(col)*0.07-depth*1.3)
+				if ripple > 1.2-0.06*depth && math.Abs(x) < 2.25-0.08*depth {
+					grid[row][col] = bannerCell{char: '-', color: []int{67, 60, 59, 238}[min(int(depth/2), 3)]}
+				}
+			}
+		}
+	}
+	// 字牌留出完整底面，覆盖环的右侧，避免笔画之间混入环的字符。
+	letters := []string{
+		"██████╗  ██████╗ ",
+		"██╔══██╗ ╚════██╗",
+		"██║  ██║      ██║",
+		"██████╔╝  █████╔╝",
+		"██╔══██╗ ██╔═══╝ ",
+		"██║  ██║ ███████╗",
+		"╚═╝  ╚═╝ ╚══════╝",
+	}
+	for row, line := range letters {
+		for col, char := range []rune(" " + line + " ") {
+			grid[row+7][col+37] = bannerCell{char: char, color: []int{44, 44, 43, 43, 37, 37, 30}[row]}
+		}
+	}
+	return grid
+}
+
+// printBanner 在准备资源前画出开场和致谢。
+// colored 为假时（输出被重定向）只写纯文本。
+func printBanner(out io.Writer, version string, colored bool) {
+	var b strings.Builder
+	b.WriteString("\n")
+	for _, row := range renderBanner() {
+		// 只在颜色变化时写转义，行尾的空白不输出。
+		end := len(row)
+		for end > 0 && row[end-1].char == ' ' {
+			end--
+		}
+		b.WriteString("  ")
+		current := 0
+		for _, cell := range row[:end] {
+			if colored && cell.color != 0 && cell.color != current {
+				fmt.Fprintf(&b, "\x1b[38;5;%dm", cell.color)
+				current = cell.color
+			}
+			b.WriteRune(cell.char)
+		}
+		if current != 0 {
+			b.WriteString("\x1b[0m")
+		}
+		b.WriteString("\n")
+	}
+	gray := func(text string) { b.WriteString("  " + terminalText(colored, "38;5;245", text) + "\n") }
+	b.WriteString("\n")
+	b.WriteString("  " + terminalText(colored, "1;38;5;230", "neOmega R2") + " " + terminalText(colored, "38;5;245", version) + "\n\n")
+	gray("本项目未直接使用以下项目的代码，但许多关键数据来自它们：")
+	gray("  Amulet      https://www.amuletmc.com/")
+	gray("  GeyserMC    https://geysermc.org/")
+	gray("  MC-Assets   https://github.com/zardoy/mc-assets")
+	gray("本项目已在 amuletmc.com 购买 Amulet 授权（2026-11-07，订单号 KBPp706mBN）。")
+	gray("如果你还没有 Amulet 授权，也建议购买一份，支持 Amulet 的持续开发。")
+	gray("此外，特别感谢 魏信者, 可白, Amon 的反馈和测试")
+	gray("neOmega Viewer R2 前身是 neOmega Viewer (https://github.com/CMA2401PT/neomega-viewer), " +
+		"但是采用了全射线渲染器 (neOmega R2, https://github.com/CMA2401PT/neomega-r2)，" +
+		"这使得其很适合大可视区块高性能渲染&光影支持")
+	gray("neOmega Viewer R2 是开源项目：https://github.com/CMA2401PT/neomega-viewer-r2")
+
+	b.WriteString("\n")
+	io.WriteString(out, b.String())
+}
+
+// terminalColors 判断标准输出是否为可以显示颜色的终端。
+func terminalColors() bool {
+	if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
+		return false
+	}
+	stat, err := os.Stdout.Stat()
+	return err == nil && stat.Mode()&os.ModeCharDevice != 0 && enableTerminalColors()
+}
+
+func terminalText(colored bool, code, text string) string {
+	if !colored {
+		return text
+	}
+	return "\x1b[" + code + "m" + text + "\x1b[0m"
+}
