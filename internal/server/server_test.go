@@ -264,15 +264,13 @@ func TestWorldChunks(t *testing.T) {
 		}
 		delete(want, pos)
 	}
-	// 删除文件后仍应命中会话缓存；重新打开则扫描为空，并拒绝旧会话。
-	files, err := filepath.Glob(filepath.Join(path, "region", "*.mca"))
+	// 新增区域后当前会话仍应命中缓存，重新打开才更新地图。Windows 上存档的已开文件会被锁住。
+	region, err := os.ReadFile(filepath.Join(path, "region", "r.0.0.mca"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, file := range files {
-		if err = os.Remove(file); err != nil {
-			t.Fatal(err)
-		}
+	if err = os.WriteFile(filepath.Join(path, "region", "r.9.9.mca"), region, 0600); err != nil {
+		t.Fatal(err)
 	}
 	if !bytes.Equal(client.chunks(), data) {
 		t.Fatal("占用表未命中会话缓存")
@@ -288,8 +286,8 @@ func TestWorldChunks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if empty := again.chunks(); len(empty) != 0 {
-		t.Fatal("空存档的占用表应为零字节")
+	if updated := again.chunks(); len(updated) != len(data)+136 {
+		t.Fatal("重新打开后占用表应包含新增区域")
 	}
 	service.Close()
 	if _, _, err = dialWorld(t, server, reopened.ID); err == nil {

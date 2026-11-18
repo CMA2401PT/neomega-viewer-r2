@@ -15,16 +15,12 @@ neOmega Viewer R2 前身是 neOmega Viewer (https://github.com/CMA2401PT/neomega
 ```sh
 npm --prefix neomega-r2/r2 ci
 node apps/neomega-viewer-r2/scripts/build-web.mjs
-go run ./apps/neomega-viewer-r2/cmd/viewer -listen 127.0.0.1:2412
+go run ./apps/neomega-viewer-r2/cmd/viewer
 ```
 
-启动终端先显示准备阶段，完成后显示 WebUI 地址，默认不弹出窗口。macOS 等平台直接点击链接，Windows 可从终端选择浏览器和图形后端。`-version` 打印版本后退出。
+服务默认监听 `0.0.0.0:2412`。就绪后终端列出本机地址和网卡的 IPv4 访问地址。局域网客户端可以使用页面上的服务端文件选择器，限本机使用时可传 `-listen 127.0.0.1:2412`。`-version` 打印版本后退出。
 
-浏览器访问 <http://127.0.0.1:2412>。Java 世界按维度的 `region` 目录读取，Bedrock 世界按 `db` 目录读取。
-
-Windows 上直接运行程序默认只启动服务。终端里的 Chrome 和 Edge 按钮使用浏览器默认图形设置。传入 `-browser` 会自动打开 Chrome，也可用 `-open edge` 或 `-open system`。旧的 ANGLE 选项保留给指定后端的调用者。网页版使用 WebGPU，Electron 桌面版使用随附的 WebGL 2 运行环境。
-
-每次启动都在 exe 旁写一份 `neomega-viewer-r2-log.txt`（不可写时放到用户缓存或临时目录，终端里会印出实际位置），记录程序版本、Windows 版本、找到的浏览器及版本、每次打开窗口的命令和浏览器启动进程的退出代码，以及网页上报的显卡与图形后端、射线程序编译耗时、累积模块准备、错误、WebGL 上下文丢失和运行 15 秒、60 秒时的帧率与 GPU 时间。遇到问题时把这份文件发给开发者。程序所在目录或其上级显式设置了拒绝项或低完整性标签（例如开发工具沙箱保护的工作区）时，不自动打开浏览器，也不显示按钮，只在终端明确提示把程序复制到别的目录再运行：实测从这类目录启动的 Chrome 立即崩溃、Edge 一直白屏，浏览器配置放在别处也一样。
+右上角显示实际渲染后端。本机回环地址和 HTTPS 默认使用 WebGPU；普通局域网 HTTP 页面使用 WebGL。Electron 使用随附环境的 WebGL。
 
 也可启动时直接打开：
 
@@ -54,7 +50,7 @@ go run ./apps/neomega-viewer-r2/cmd/viewer \
 
 拖动转向，WASD 按相机的水平朝向前后左右移动，抬头低头不改变移动高度。空格沿 Y 轴上升，Shift 沿 Y 轴下降。滚轮沿视线前后移动，按住 Shift 滚动时加大步长。点击底部 X、Y、Z 读数即可编辑，回车或箭头按钮跳转，Esc 或点到别处放弃编辑。存档名打开场景信息，齿轮打开设置，面板位于触发按钮上方。默认场景和存档均可飞行、使用地图和调整光照。设置保存在浏览器本地。
 
-触屏设备上，单指拖动场景转向，按住右下角的十字按钮水平移动，左侧两个按钮沿 Y 轴升降。移动按钮位于底部 HUD 上方，可一边按住按钮一边用另一根手指转向。隐藏 HUD 或打开全屏地图时，移动按钮一起隐藏。
+触屏设备上，单指拖动场景转向，按住左下角的十字按钮水平移动，右侧两个按钮沿 Y 轴升降。移动按钮位于底部 HUD 上方，可一边按住按钮一边用另一根手指转向。隐藏 HUD 或打开全屏地图时，移动按钮一起隐藏。
 
 右上角第一排依次是体素渲染器、基础渲染器、光影渲染器（三选一，决定预览用哪一档，见 [四档渲染器](../../neomega-r2/r2/README.md#四档渲染器)）、静止时累积和隐藏 HUD；第二排依次是导出当前画面、拍照、时间流逝和时间滑块。隐藏 HUD 后只保留眼睛按钮，再按恢复。打开全屏地图时右上角工具栏保留，可以直接拍摄或导出鸟瞰图，地图的操作提示移到左上角。左上角显示随相机转动的坐标轴、实际渲染分辨率与 FPS。窗口宽度小于高度或 560 像素时，页面显示“仅支持横屏”。
 
@@ -157,25 +153,22 @@ Go 入口 `cmd/viewer/main.go` 选择需要启用的 effector 和 block actor �
 
 ## 导出离线建筑网页
 
-`cmd/exporter` 把存档或结构文件导出成一个 HTML。把这个文件复制到另一台支持 WebGPU 的设备，直接双击即可浏览。文件内含渲染器、准备线程、默认材质、地图占用表及静态方块数据。底部的坐标、地图和设置与 demo 共用。启动时只编译基础渲染器，选择其他档位或拍照时再编译相应档位。
+点击底部 HUD 的「导出离线 HTML」下载当前维度。网页从点击时的相机坐标和朝向开始，内嵌已经应用的材质和模型表，其他显示设置使用播放器默认值。初始使用基础档，光影、累积和拍照按需编译。把 HTML 复制到支持 WebGPU 的设备即可离线打开。
 
-先按上面的步骤构建网页，然后在工作区根目录运行：
+导出会读取该维度区块占用表里的全部静态区域，包含视野外的建筑。每个非空区域单独压缩，浏览时按需解压。沿用 R2 的 Y = −64～447 高度范围和已用调色板，并省略全空气子区块及动态对象。内置场景和提供区块占用表的 R2Link 数据源也可导出。
+
+批处理可以使用同一个 viewer 可执行文件。命令行导出默认使用原版材质、自动取景和全部非空维度。`-dimension` 可指定单个维度。
 
 ```sh
-go build -o exporter ./apps/neomega-viewer-r2/cmd/exporter
-./exporter -o pavilion.html pavilion.schem
-./exporter -dimension DIM-1 -template my-template.html -o nether.html ./my-world
+viewer export -o pavilion.html pavilion.schem
+viewer export -dimension DIM-1 -template my-template.html -o nether.html ./my-world
 ```
-
-Windows 可用 `go build -o exporter.exe ./apps/neomega-viewer-r2/cmd/exporter`。命令选项放在输入路径之前。省略 `-o` 会在输入旁生成同名 HTML。接受 Viewer 支持的 Java／Bedrock 存档、`level.dat`、PackFS 和结构文件。导出结构时会在输出目录临时转换，完成后自动清理。
-
-默认扫描所有有内容的维度，多个维度可在底栏切换。每个维度内，无论离出生点多远，都会按 8×8 区块的 r2region 收集非空气子区块。浏览时只解压当前视野需要的区域。导出内容遵循 R2 的可显示高度 Y = −64～447，命令会报告越界数量。近景动态对象（如附魔书动画）不写入快照，方块的静态外观会保留。
 
 可以用 `node apps/neomega-viewer-r2/experiment/exporter.cjs pavilion.html` 做浏览器验收。它关闭网络，直接打开文件，检查地图、首屏加载与着色器的实际编译顺序。
 
 ### 自定义导出模板
 
-默认模板在 [cmd/exporter/template.html](cmd/exporter/template.html)。`-template` 可指定自己的 HTML，在正文中保留这两个标记即可沿用离线播放器：
+默认模板在 [internal/snapshot/template.html](internal/snapshot/template.html)。`-template` 可指定自己的 HTML，在正文中保留这两个标记即可沿用离线播放器：
 
 ```html
 <body>
@@ -205,7 +198,7 @@ R2_URL=http://127.0.0.1:2413 node apps/neomega-viewer-r2/experiment/ui.cjs
 R2_URL=http://127.0.0.1:2413 node apps/neomega-viewer-r2/experiment/mobius.cjs
 ```
 
-浏览器验收需先在 2413 启动应用服务，可使用 `-browser=false` 避免打开交互窗口。静态模型脚本对照近景半径 1 与 16 的同一画面，验证远景形状、跨区片段和特殊对象的独立启停。普通流式验证使用 `browser.cjs`。`ui.cjs` 验证透视与高空正交拾取，并用真实存档在 1280×720、1920×1080 下生成界面截图，结果默认写入 `/tmp/r2ui/`。
+浏览器验收需先在 2413 启动应用服务。静态模型脚本对照近景半径 1 与 16 的同一画面，验证远景形状、跨区片段和特殊对象的独立启停。普通流式验证使用 `browser.cjs`。`ui.cjs` 验证透视与高空正交拾取，并用真实存档在 1280×720、1920×1080 下生成界面截图，结果默认写入 `/tmp/r2ui/`。
 
 `mobius.cjs` 独立验证默认场景的流式加载、协议解码、海面绘制参数、地图、拍照和关闭恢复，并在 1280×720、1920×1080 下截图，默认输出到 `/tmp/r2mobius/`。工具路径、输出与结果解释见 [验收说明](experiment/README.md)。
 

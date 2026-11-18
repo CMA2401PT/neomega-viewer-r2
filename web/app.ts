@@ -1,21 +1,19 @@
 // 应用组装存档会话、飞行/地图视图与同一射线帧循环；UI 事件和投影分别放在独立模块。
 import { decodeTextures, createRenderer, ObjectRegistry, enchantingBook, WorldSession, r2linkSource } from "/r2/index.js";
-import type { Renderer, RendererOptions, R2LinkSource } from "/r2/index.js";
+import { exportSnapshot } from "./export.js";
+import type { TextureSet, Renderer, RendererOptions, R2LinkSource } from "/r2/index.js";
 import type { Connection, OpenOptions, Progress, ViewerWorld } from "./types.js";
 import { createView, TIER_NAMES, type ViewSettings, type ViewStats } from "/r2/common_ui/view.js";
 import { element, closePopovers } from "/r2/common_ui/hud.js";
 import { showWorldInfo, showConnection, showWorldDetails } from "./world-info.js";
 import { createPicker } from "./picker.js";
-import { report, describe, startDiagnostics } from "./diagnostics.js";
 import { startupStage } from "/r2/common_ui/startup.js";
 
 // Electron embeds this page at r2://app. The GLSL inspection tools explicitly request WebGL.
-const useWebGPU = location.protocol !== "r2:" && new URLSearchParams(location.search).get("backend") !== "webgl";
-startDiagnostics(useWebGPU);
+const useWebGPU = isSecureContext && location.protocol !== "r2:" && new URLSearchParams(location.search).get("backend") !== "webgl";
+
 
 const canvas = element<HTMLCanvasElement>("view");
-canvas.addEventListener("webglcontextlost", () => report("context-lost"));
-canvas.addEventListener("webglcontextrestored", () => report("context-restored"));
 const camera = { position: [0, 80, 0], yaw: -0.7, pitch: -0.32 };
 const savedSettings = { ...JSON.parse(localStorage.getItem("neomega-r2-settings") || "{}") };
 // 清除旧版的样本上限和阴影开关。
@@ -40,6 +38,10 @@ const registry = new ObjectRegistry().register("enchanting_book", () =>
   enchantingBook("/r2/assets/book.png"),
 );
 let renderer: Renderer;
+let activeTextures: TextureSet | undefined;
+let exporting: AbortController | null = null;
+const exportButton = element<HTMLButtonElement>("export-html");
+const exportStatus = element("export-status");
 let session: WorldSession | null = null;
 let source: R2LinkSource | null = null;
 // 外部来源握手期间不跟随本机世界的断开。
@@ -80,6 +82,7 @@ async function followServer(closed: R2LinkSource, message: string) {
 async function installWorld(info: ViewerWorld, linked?: R2LinkSource) {
   if (world.id === info.id) { world = info; return; }
   if (world.id > info.id) return linked?.close();
+  exporting?.abort(new Error("场景已切换"));
   await view.cancelPhoto();
   // 离开开场场景或直接载入外部来源时从白天开始；来源之间切换保留当前时间。
   const startDaytime = !info.scene && (!world.loaded || !!world.scene);
@@ -110,6 +113,7 @@ async function installWorld(info: ViewerWorld, linked?: R2LinkSource) {
     onError: (message) => hud.error(message),
   });
   session.focus(camera.position, settings);
+  exportButton.disabled = !!exporting;
 }
 /** 目录选择器与验收入口共用同一存档打开操作。 */
 async function openWorld(path: string, options: OpenOptions = {}, progress?: (value: Progress) => void, signal?: AbortSignal) {
@@ -137,31 +141,43 @@ async function openWorld(path: string, options: OpenOptions = {}, progress?: (va
     }
   }
 }
-const compileStarted = performance.now();
-const showCompile: NonNullable<RendererOptions["onProgress"]> = async ({ index, total, label }) => {
-  report("compile", { index, total, label, seconds: +((performance.now() - compileStarted) / 1000).toFixed(1) });
-  await startupStage(`${label}（${index}/${total}）`);
-};
+const showCompile: NonNullable<RendererOptions["onProgress"]> = ({ index, total, label }) =>
+  startupStage(`${label}（${index}/${total}）`);
 await startupStage("正在初始化图形设备…");
-try {
-  renderer = await createRenderer(canvas, { useWebGPU, tier: settings.tier, onProgress: showCompile });
-  report("renderer-ready", { seconds: +((performance.now() - compileStarted) / 1000).toFixed(1) });
-} catch (error) {
-  report("renderer-failed", { seconds: +((performance.now() - compileStarted) / 1000).toFixed(1), message: describe(error) });
-  throw error;
-}
+renderer = await createRenderer(canvas, { useWebGPU, tier: settings.tier, onProgress: showCompile });
 await startupStage("正在准备场景…");
 const view = createView({
-  renderer, camera, settings, report,
+  renderer, camera, settings,
   scene: () => ({ name: world.name, ocean: world.scene?.ocean, connection: world.connection }),
   onSettings: () => localStorage.setItem("neomega-r2-settings", JSON.stringify(settings)),
   onStats: showDetails,
 });
 const { hud, map, frames } = view;
-const showError = hud.error;
-hud.error = (message) => {
-  report("hud-error", { message: String(message).slice(0, 4000) });
-  showError(message);
+exportButton.onclick = async () => {
+  if (!source || exporting) return;
+  exporting = new AbortController();
+  exportButton.disabled = true;
+  exportStatus.hidden = false;
+  exportStatus.textContent = "正在导出…";
+  const name = world.name;
+  try {
+    const file = await exportSnapshot({
+      sourceURL: source.url, name, dimension: world.dimension ?? ".", ocean: world.scene?.ocean,
+      camera: { ...camera, position: [...camera.position] }, states: renderer.states, textures: activeTextures,
+    }, exporting.signal, count => { exportStatus.textContent = `已导出 ${count} 个区域`; });
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name.replace(/[\\/:*?"<>|]/g, "_") + ".html";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (error) {
+    if (!exporting.signal.aborted) hud.error(String(error));
+  } finally {
+    exporting = null;
+    exportButton.disabled = !source;
+    exportStatus.hidden = true;
+  }
 };
 
 const picker = createPicker(openWorld);
@@ -282,6 +298,7 @@ async function applyTextures(path: string) {
     const set = await loadTextures(path, maxSize);
     if (session) await session.setTextures(set);
     else renderer.setTextures(set);
+    activeTextures = set;
     settings.texturePath = path;
     settings.textureSize = maxSize;
     element<HTMLInputElement>("texture-path").value = path;
@@ -355,18 +372,6 @@ const localServiceURL = location.protocol === "r2:"
   : location.href;
 await useWorld(await (await fetch("/api/world")).json());
 await startupStage("正在加载场景，准备第一帧…");
-// 运行一阵后记下实际帧率与 GPU 时间，判断这种浏览器与图形后端组合是否够快。
-for (const delay of [15000, 60000])
-  setTimeout(() => {
-    const times = renderer.times.sort((a, b) => a - b);
-    report("performance", {
-      canvas: [canvas.width, canvas.height],
-      resolution: settings.resolution,
-      gpuMedianMs: times[times.length >> 1] ?? null,
-      fps: view.fps,
-      world: world.kind || "mobius",
-    });
-  }, delay);
 window.addEventListener("pagehide", () => {
   view.dispose();
   session?.dispose();

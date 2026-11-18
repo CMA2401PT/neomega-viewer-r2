@@ -1,4 +1,4 @@
-package main
+package snapshot
 
 import (
 	"cmp"

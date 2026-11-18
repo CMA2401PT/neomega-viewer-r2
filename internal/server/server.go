@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"neomega-converter-core/structure"
 	"neomega-converter-core/worldinput"
@@ -17,6 +18,7 @@ import (
 	"neomega-view-utils/r2assets"
 	"neomega-viewer-r2/internal/filebrowse"
 	"neomega-viewer-r2/internal/mobius"
+	"neomega-viewer-r2/internal/snapshot"
 	"neomega-viewer-r2/internal/worldsource"
 	"net/http"
 	"strconv"
@@ -227,6 +229,10 @@ func (s *Server) Handler(web fs.FS) http.Handler {
 	core, _ := fs.Sub(r2.Files, "dist")
 	mux.Handle("/r2/assets/", http.StripPrefix("/r2/assets/", http.FileServerFS(assets)))
 	mux.Handle("/r2/", http.StripPrefix("/r2/", http.FileServerFS(core)))
+	mux.HandleFunc("GET /api/export/template", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		io.WriteString(w, snapshot.Template())
+	})
 	mux.HandleFunc("GET /api/world", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, s.Info()) })
 	mux.HandleFunc("POST /api/world/open", func(w http.ResponseWriter, r *http.Request) {
 		var request OpenOptions

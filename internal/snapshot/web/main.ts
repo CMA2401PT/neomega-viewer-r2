@@ -8,9 +8,9 @@ interface Dimension {
   id: string;
   key: number;
   // 开场取景的方块包围盒，大存档取出生点附近有内容的区域。
-  frame: { min: number[]; max: number[] };
+  frame?: { min: number[]; max: number[] };
 }
-interface ExportedWorld { version: number; name: string; dimensions: Dimension[] }
+interface ExportedWorld { version: number; name: string; camera?: { position: number[]; yaw: number; pitch: number }; ocean?: number; dimensions: Dimension[] }
 
 function unpack(base64: string): Response {
   const binary = atob(base64), bytes = new Uint8Array(binary.length);
@@ -64,7 +64,7 @@ async function start() {
   near.disabled = true;
   near.title = "建筑快照只包含静态方块";
   const view = createView({
-    renderer, camera, settings, scene: () => ({ name: world.name }),
+    renderer, camera, settings, scene: () => ({ name: world.name, ocean: world.ocean }),
     onStats: ({ stats, median }) => {
       if (status.checkVisibility()) status.textContent = `${stats.sections} 个子区块 · ${stats.loaded}/${stats.wanted} 个 r2region · GPU ${median?.toFixed(2) ?? "…"} ms`;
     },
@@ -81,12 +81,18 @@ async function start() {
   function openDimension(dimension: Dimension) {
     view.cancelPhoto();
     session?.dispose();
-    const { min, max } = dimension.frame;
-    const center = min.map((lo, i) => (lo + max[i]) / 2);
-    const distance = Math.hypot(...max.map((hi, i) => hi - min[i])) * 1.1;
-    camera.yaw = -Math.PI / 4;
-    camera.pitch = -Math.PI / 6;
-    camera.position = center.map((v, i) => v + distance * [Math.sqrt(3 / 8), 0.5, Math.sqrt(3 / 8)][i]);
+    if (world.camera) {
+      camera.position = [...world.camera.position];
+      camera.yaw = world.camera.yaw;
+      camera.pitch = world.camera.pitch;
+    } else if (dimension.frame) {
+      const { min, max } = dimension.frame;
+      const center = min.map((lo, i) => (lo + max[i]) / 2);
+      const distance = Math.hypot(...max.map((hi, i) => hi - min[i])) * 1.1;
+      camera.yaw = -Math.PI / 4;
+      camera.pitch = -Math.PI / 6;
+      camera.position = center.map((v, i) => v + distance * [Math.sqrt(3 / 8), 0.5, Math.sqrt(3 / 8)][i]);
+    }
     session = new WorldSession(renderer, staticSource(sets.get(dimension.key)!), {
       registry: new ObjectRegistry(), workerURL, workerType: "classic", onError: message => view.hud.error(message),
     });

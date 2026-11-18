@@ -1,16 +1,14 @@
-// Command exporter 将存档中的静态方块写入可直接离线打开的 HTML。
-package main
+// Package snapshot 将存档中的静态方块写入可直接离线打开的 HTML。
+package snapshot
 
 import (
 	"bufio"
 	"context"
 	_ "embed"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
 
@@ -27,25 +25,17 @@ var player string
 const worldMarker = "<!-- R2_WORLD -->"
 const viewerMarker = "<!-- R2_VIEWER -->"
 
-func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-	if err := run(ctx, os.Args[1:]); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return
-		}
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-}
+// Template 为 HUD 下载提供与命令行相同的离线播放器。
+func Template() string { return strings.Replace(defaultTemplate, viewerMarker, player, 1) }
 
-func run(ctx context.Context, args []string) error {
-	flags := flag.NewFlagSet("exporter", flag.ContinueOnError)
+// Run 执行 viewer export 子命令。
+func Run(ctx context.Context, args []string) error {
+	flags := flag.NewFlagSet("viewer export", flag.ContinueOnError)
 	output := flags.String("o", "", "输出 HTML 路径，默认为输入旁的同名 .html")
 	custom := flags.String("template", "", "模板 HTML 路径，默认使用内嵌模板")
 	dimension := flags.String("dimension", "", "仅导出这个维度，默认导出全部非空维度")
 	flags.Usage = func() {
-		fmt.Fprintln(flags.Output(), "用法：exporter [选项] <存档目录、PackFS 或结构文件>")
+		fmt.Fprintln(flags.Output(), "用法：viewer export [选项] <存档目录、PackFS 或结构文件>")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {

@@ -1,4 +1,4 @@
-package main
+package snapshot
 
 import (
 	"bytes"
@@ -42,7 +42,7 @@ func TestStructureWithCustomTemplate(t *testing.T) {
 	if err := os.WriteFile(template, []byte("<main>"+worldMarker+"</main>"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := run(context.Background(), []string{"-template", template, path}); err != nil {
+	if err := Run(context.Background(), []string{"-template", template, path}); err != nil {
 		t.Fatal(err)
 	}
 	out := filepath.Join(dir, "wide.html")
@@ -86,7 +86,7 @@ func TestStructureWithCustomTemplate(t *testing.T) {
 	if err := os.WriteFile(path, []byte("invalid nbt"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := run(context.Background(), []string{"-o", out, path}); err == nil {
+	if err := Run(context.Background(), []string{"-o", out, path}); err == nil {
 		t.Fatal("损坏输入应报告错误")
 	}
 	after, err := os.ReadFile(out)
