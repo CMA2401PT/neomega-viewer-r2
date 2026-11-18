@@ -13,7 +13,7 @@ export function report(event: string, detail: Record<string, unknown> = {}) {
 }
 
 /** 页面环境：浏览器、屏幕、显卡与图形后端。用一个临时 WebGL2 上下文读显卡名，读完立即释放。 */
-function environment() {
+function environment(useWebGPU: boolean) {
   const info: Record<string, unknown> = {
     userAgent: navigator.userAgent,
     devicePixelRatio,
@@ -21,6 +21,7 @@ function environment() {
     screen: [screen.width, screen.height],
     webgpu: "gpu" in navigator,
   };
+  if (useWebGPU) return { ...info, backend: "webgpu" };
   try {
     const gl = document.createElement("canvas").getContext("webgl2");
     if (!gl) return { ...info, webgl2: false };
@@ -47,8 +48,8 @@ export const describe = (error: unknown) =>
   error instanceof Error ? `${error.message}\n${error.stack || ""}`.slice(0, 4000) : String(error).slice(0, 4000);
 
 /** 页面打开时上报环境，并记录所有未处理的错误。 */
-export function startDiagnostics() {
-  report("page", environment());
+export function startDiagnostics(useWebGPU: boolean) {
+  report("page", environment(useWebGPU));
   addEventListener("error", (event) =>
     report("error", { message: describe(event.error ?? event.message), source: `${event.filename}:${event.lineno}` }),
   );

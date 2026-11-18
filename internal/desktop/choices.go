@@ -18,6 +18,8 @@ type Choice struct {
 
 // Choices 的第一项是默认组合；找不到对应浏览器时按顺序尝试下一项。
 var Choices = []Choice{
+	{Key: "chrome", Name: "Chrome", Browser: "chrome"},
+	{Key: "edge", Name: "Edge", Browser: "edge"},
 	{Key: "chrome-gl", Name: "Chrome + OpenGL", Browser: "chrome", Angle: "gl"},
 	{Key: "chrome-vulkan", Name: "Chrome + Vulkan", Browser: "chrome", Angle: "vulkan"},
 	{Key: "edge-gl", Name: "Edge + OpenGL", Browser: "edge", Angle: "gl"},
@@ -54,7 +56,7 @@ func PrintChoices(out io.Writer, colored, interactive bool) {
 				label = "\x1b[1;97;48;5;30m " + buttonLabel(i) + " \x1b[0m"
 			}
 		}
-		if choice.Key == "chrome-gl" {
+		if i == 0 {
 			label += "（推荐）"
 		}
 		fmt.Fprintln(out, "    "+label)

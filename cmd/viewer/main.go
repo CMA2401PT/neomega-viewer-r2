@@ -45,7 +45,7 @@ func run() error {
 	webPath := flag.String("web", "", "开发时读取应用网页目录")
 	browser := flag.Bool("browser", false, "启动后自动打开应用窗口")
 	desktopHost := flag.Bool("desktop-host", false, "桌面宿主模式：stdout 上报 JSON 就绪消息，stdin 关闭时退出，不启动外部浏览器")
-	open := flag.String("open", desktop.Choices[0].Key, "启动时打开窗口用的浏览器与图形后端：chrome-gl、chrome-vulkan、edge-gl、edge-vulkan；system 表示系统默认浏览器")
+	open := flag.String("open", desktop.Choices[0].Key, "启动时打开窗口用的浏览器与图形后端：chrome（默认）、edge、chrome-gl、chrome-vulkan、edge-gl、edge-vulkan；system 表示系统默认浏览器")
 	showVersion := flag.Bool("version", false, "打印版本号后退出")
 	flag.Parse()
 	if *showVersion {

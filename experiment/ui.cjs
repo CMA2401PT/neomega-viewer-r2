@@ -105,7 +105,7 @@ fs.mkdirSync(out + "/shots", { recursive: true });
           viewerR2.openWorld("/tmp/neomega-r2-java-fixture"),
         );
         await settled();
-        const picks = await page.evaluate(() => {
+        const picks = await page.evaluate(async () => {
           const r = viewerR2.renderer,
             pixel = { width: 101, height: 101, x: 50, y: 50 };
           const top = {
@@ -120,9 +120,9 @@ fs.mkdirSync(out + "/shots", { recursive: true });
             pitch: 0,
           };
           const before = r.accumulated;
-          const ortho = r.pick(top, pixel),
-            perspective = r.pick(side, pixel);
-          const miss = r.pick(
+          const ortho = await r.pick(top, pixel),
+            perspective = await r.pick(side, pixel);
+          const miss = await r.pick(
             { ...top, position: [-1000, 10000, -1000] },
             pixel,
           );
@@ -131,7 +131,7 @@ fs.mkdirSync(out + "/shots", { recursive: true });
             perspective,
             miss,
             accumulationPreserved: before === r.accumulated,
-            error: r.gl.getError(),
+            error: viewerR2.state.error,
           };
         });
         assert.deepEqual(picks.ortho.position, [10, 2, 8]);

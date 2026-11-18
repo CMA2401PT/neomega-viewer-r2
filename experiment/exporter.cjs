@@ -22,22 +22,23 @@ async function check(file) {
     await page.addInitScript(() => {
       // 记录 GPU 实际收到的档位；按钮的初始选中状态无法检出后台预编译。
       window.compiledTiers = [];
-      const original = WebGL2RenderingContext.prototype.shaderSource;
-      WebGL2RenderingContext.prototype.shaderSource = function(shader, code) {
-        const tier = /#define RENDER_TIER (\d)/.exec(code);
-        if (tier) window.compiledTiers.push(Number(tier[1]));
-        return original.call(this, shader, code);
+      const original = GPUDevice.prototype.createRenderPipelineAsync;
+      GPUDevice.prototype.createRenderPipelineAsync = function(descriptor) {
+        if (["voxel", "basic", "shading", "accumulation", "photo"].includes(descriptor.label)) {
+          window.compiledTiers.push(descriptor.label);
+        }
+        return original.call(this, descriptor);
       };
     });
     await page.goto(pathToFileURL(path.resolve(file)).href);
     await page.waitForFunction(() =>
       document.getElementById("startup-status").hidden &&
       document.getElementById("loading").textContent === "已加载", null, { timeout: 120000 });
-    assert.deepEqual(await page.evaluate(() => window.compiledTiers), [1]);
+    assert.deepEqual(await page.evaluate(() => window.compiledTiers), ["basic"]);
     await page.locator("#map-open").click();
     await page.locator("#map-close").click();
     await page.locator('[data-tier="shading"]').click();
-    await page.waitForFunction(() => window.compiledTiers.includes(2) &&
+    await page.waitForFunction(() => window.compiledTiers.includes("shading") &&
       document.getElementById("task-status").hidden, null, { timeout: 120000 });
     assert.deepEqual(errors, []);
     assert.deepEqual(requests, []);

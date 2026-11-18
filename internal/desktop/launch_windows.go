@@ -118,7 +118,10 @@ func LaunchChoice(address string, i int, diag *Diagnostics) (string, error) {
 		diag.Printf("打开 %s：未找到浏览器，查找过 %q", choice.Name, browserPaths(choice.Browser))
 		return "", fmt.Errorf("没有找到 %s", choice.Browser)
 	}
-	args := []string{"--use-angle=" + choice.Angle}
+	var args []string
+	if choice.Angle != "" {
+		args = append(args, "--use-angle="+choice.Angle)
+	}
 	if profile := ensureProfile("browser-" + choice.Key); profile != "" {
 		args = append(args, "--user-data-dir="+profile)
 	} else {

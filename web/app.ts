@@ -9,7 +9,9 @@ import { createPicker } from "./picker.js";
 import { report, describe, startDiagnostics } from "./diagnostics.js";
 import { startupStage } from "/r2/common_ui/startup.js";
 
-startDiagnostics();
+// Electron embeds this page at r2://app. The GLSL inspection tools explicitly request WebGL.
+const useWebGPU = location.protocol !== "r2:" && new URLSearchParams(location.search).get("backend") !== "webgl";
+startDiagnostics(useWebGPU);
 
 const canvas = element<HTMLCanvasElement>("view");
 canvas.addEventListener("webglcontextlost", () => report("context-lost"));
@@ -142,7 +144,7 @@ const showCompile: NonNullable<RendererOptions["onProgress"]> = async ({ index, 
 };
 await startupStage("正在初始化图形设备…");
 try {
-  renderer = await createRenderer(canvas, { tier: settings.tier, onProgress: showCompile });
+  renderer = await createRenderer(canvas, { useWebGPU, tier: settings.tier, onProgress: showCompile });
   report("renderer-ready", { seconds: +((performance.now() - compileStarted) / 1000).toFixed(1) });
 } catch (error) {
   report("renderer-failed", { seconds: +((performance.now() - compileStarted) / 1000).toFixed(1), message: describe(error) });
@@ -356,13 +358,12 @@ await startupStage("正在加载场景，准备第一帧…");
 // 运行一阵后记下实际帧率与 GPU 时间，判断这种浏览器与图形后端组合是否够快。
 for (const delay of [15000, 60000])
   setTimeout(() => {
-    const times = renderer.times.sort((a, b) => a - b),
-      interval = frames.reduce((a, b) => a + b, 0) / frames.length;
+    const times = renderer.times.sort((a, b) => a - b);
     report("performance", {
       canvas: [canvas.width, canvas.height],
       resolution: settings.resolution,
       gpuMedianMs: times[times.length >> 1] ?? null,
-      fps: interval ? Math.round(1000 / interval) : null,
+      fps: view.fps,
       world: world.kind || "mobius",
     });
   }, delay);
@@ -390,7 +391,7 @@ const viewerR2 = {
       stream: session?.stats,
       gpuTimes: renderer.times,
       frames: [...frames],
-      error: renderer.gl.getError(),
+      error: renderer.gl?.getError() ?? 0,
     };
   },
   /** 固定相机朝向，供像素回归与截图使用。 */

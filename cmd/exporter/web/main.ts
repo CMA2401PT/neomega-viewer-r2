@@ -50,6 +50,7 @@ async function start() {
   document.title = world.name + " · R2 建筑预览";
   element("building-name").textContent = world.name;
   const renderer = await createRenderer(element<HTMLCanvasElement>("view"), {
+    useWebGPU: true,
     tier: settings.tier,
     readResource: async name => {
       if (!(name in resources)) throw Error("网页缺少渲染资源 " + name);

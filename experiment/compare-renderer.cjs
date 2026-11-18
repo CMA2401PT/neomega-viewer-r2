@@ -114,7 +114,7 @@ function coreFiles(ref) {
           });
         else await route.continue();
       });
-      await page.goto(base);
+      await page.goto(new URL("?backend=webgl",base).href);
       await page.waitForFunction(() => globalThis.viewerR2);
       report.gpu = await page.evaluate(() => {
         const gl = viewerR2.renderer.gl;

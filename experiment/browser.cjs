@@ -91,11 +91,12 @@ fs.mkdirSync(out, { recursive: true });
       }, value);
     };
     const pixels = (objects = true) =>
-      page.evaluate((objects) => {
+      page.evaluate(async (objects) => {
         const { camera, settings } = viewerR2.state;
         const angle = ((settings.time - 6) / 24) * 2 * Math.PI;
         // 水面也有动画，像素对照固定物理时间，仍使用实际世界与当前设置。
-        viewerR2.renderer.draw(camera, {
+        await viewerR2.renderer.draw(camera, {
+          synchronize: true,
           width: 1280,
           height: 720,
           time: 0,
@@ -104,7 +105,7 @@ fs.mkdirSync(out, { recursive: true });
           sun: [Math.cos(angle), Math.sin(angle), 0.3],
           fog: settings.fog ? settings.farRadius * 16 : Infinity,
         });
-        const p = viewerR2.renderer.pixels();
+        const p = await viewerR2.renderer.pixels();
         let s = "";
         for (let i = 0; i < p.length; i += 8192)
           s += String.fromCharCode(...p.subarray(i, i + 8192));

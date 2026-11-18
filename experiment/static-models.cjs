@@ -56,16 +56,17 @@ fs.mkdirSync(out, { recursive: true });
       assert.equal(await page.evaluate(() => viewerR2.state.error), 0);
     };
     const draw = async (fragments = true) =>
-      page.evaluate((fragments) => {
+      page.evaluate(async (fragments) => {
         const r = viewerR2.renderer;
-        r.draw(viewerR2.state.camera, {
+        await r.draw(viewerR2.state.camera, {
+          synchronize: true,
           width: 1280,
           height: 720,
           time: 0,
           objects: false,
           fragments,
         });
-        const pixels = r.pixels();
+        const pixels = await r.pixels();
         let s = "";
         for (let i = 0; i < pixels.length; i += 8192)
           s += String.fromCharCode(...pixels.subarray(i, i + 8192));
