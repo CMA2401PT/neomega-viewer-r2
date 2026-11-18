@@ -155,6 +155,37 @@ Go 入口 `cmd/viewer/main.go` 选择需要启用的 effector 和 block actor �
 
 区域池预留 256 MiB，缩小视距回收池内地址，切换场景时释放旧池，并为新来源重新建立池。远景半径超过 48 时，密集存档可能超出容量，此时会显示错误，可降低远景视距。文件会话按相机流式读取固定内容，查看磁盘上的外部修改需重新打开。
 
+## 导出离线建筑网页
+
+`cmd/exporter` 把存档或结构文件导出成一个 HTML。把这个文件复制到另一台支持 WebGL 2 的电脑，直接双击即可浏览。文件内含渲染器、准备线程、默认材质、地图占用表及静态方块数据。底部的坐标、地图和设置与 demo 共用。启动时只编译基础渲染器，选择其他档位或拍照时再编译相应档位。
+
+先按上面的步骤构建网页，然后在工作区根目录运行：
+
+```sh
+go build -o exporter ./apps/neomega-viewer-r2/cmd/exporter
+./exporter -o pavilion.html pavilion.schem
+./exporter -dimension DIM-1 -template my-template.html -o nether.html ./my-world
+```
+
+Windows 可用 `go build -o exporter.exe ./apps/neomega-viewer-r2/cmd/exporter`。命令选项放在输入路径之前。省略 `-o` 会在输入旁生成同名 HTML。接受 Viewer 支持的 Java／Bedrock 存档、`level.dat`、PackFS 和结构文件。导出结构时会在输出目录临时转换，完成后自动清理。
+
+默认扫描所有有内容的维度，多个维度可在底栏切换。每个维度内，无论离出生点多远，都会按 8×8 区块的 r2region 收集非空气子区块。浏览时只解压当前视野需要的区域。导出内容遵循 R2 的可显示高度 Y = −64～447，命令会报告越界数量。近景动态对象（如附魔书动画）不写入快照，方块的静态外观会保留。
+
+可以用 `node apps/neomega-viewer-r2/experiment/exporter.cjs pavilion.html` 做浏览器验收。它关闭网络，直接打开文件，检查地图、首屏加载与着色器的实际编译顺序。
+
+### 自定义导出模板
+
+默认模板在 [cmd/exporter/template.html](cmd/exporter/template.html)。`-template` 可指定自己的 HTML，在正文中保留这两个标记即可沿用离线播放器：
+
+```html
+<body>
+  <!-- R2_WORLD -->
+  <!-- R2_VIEWER -->
+</body>
+```
+
+`R2_WORLD` 必须出现一次，导出器会在这里写入版本为 1 的 JSON 清单（`#r2-world`）、各维度的区块位图（`#r2-chunks-维度编号`），以及非空区域的 `script[data-dimension][data-r2-region]`。区域坐标格式为 `x/z`，区域内容是 R2Link 的 `EncodeRegion` 二进制，位图和区域均经 gzip 压缩再用 Base64 编码。维度编号见清单中的 `dimensions[].key`。实现了自己播放器的模板可以省略 `R2_VIEWER` 并直接使用这些数据；自定义的脚本、字体和图片也要内联才能随文件离线分发。
+
 ## 构建与验收
 
 应用网页、共享 HUD 和渲染核心都使用 TypeScript。构建脚本依次生成核心的 `dist/`、共享界面的 `dist/common_ui/` 和 Viewer 的 `web/dist/`，Go 将它们嵌入可执行文件。开发时用 `-web ./apps/neomega-viewer-r2/web` 可以直接从磁盘读取 Viewer 页面和编译结果；修改共享界面或渲染核心后需重新编译 Go 程序。

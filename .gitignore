@@ -2,3 +2,5 @@
 /viewer
 .DS_Store
 /web/dist/
+/cmd/exporter/web/dist/
+/exporter

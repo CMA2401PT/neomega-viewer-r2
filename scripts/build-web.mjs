@@ -7,6 +7,8 @@ const web = fileURLToPath(new URL("../web", import.meta.url));
 for (const args of [
   [fileURLToPath(new URL("scripts/build.mjs", core))],
   [fileURLToPath(new URL("node_modules/typescript/bin/tsc", core)), "-p", web],
+  [fileURLToPath(new URL("node_modules/typescript/bin/tsc", core)), "-p", fileURLToPath(new URL("../cmd/exporter/web/", import.meta.url))],
+  [fileURLToPath(new URL("../cmd/exporter/web/build.mjs", import.meta.url))],
 ]) {
   execFileSync(process.execPath, args, { stdio: "inherit" });
 }
