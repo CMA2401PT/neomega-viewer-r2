@@ -11,7 +11,8 @@ require (
 	neomega-nbt v0.0.0
 	neomega-r2 v0.0.0
 	neomega-r2link v0.0.0
-	neomega-view-utils v0.0.0
+	neomega-view-utils/fixer v0.0.0 // indirect
+	neomega-view-utils/r2assets v0.0.0
 )
 
 require (
@@ -30,12 +31,14 @@ replace neomega-nbt => ../../neomega-nbt
 
 replace neomega-packfs => ../../neomega-packfs
 
-replace neomega-r2 => ../../neomega-r2
+replace neomega-r2 => ../../neomega-r2/r2
 
-replace neomega-r2link => ../../neomega-r2link
+replace neomega-r2link => ../../neomega-r2/go-link
 
 replace neomega-converter-core => ../../neomega-converter-core
 
 replace neomega-converter => ../neomega-converter
 
-replace neomega-view-utils => ../../neomega-view-utils
+replace neomega-view-utils/r2assets => ../../neomega-r2/assets-utils
+
+replace neomega-view-utils/fixer => ../../neomega-r2/fix-utils

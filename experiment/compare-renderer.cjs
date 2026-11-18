@@ -9,7 +9,7 @@ const os = require("node:os");
 const { execFileSync } = require("node:child_process");
 const assert = require("node:assert/strict");
 const root = path.resolve(__dirname, "../../..");
-const core = path.join(root, "neomega-r2");
+const core = path.join(root, "neomega-r2", "r2");
 const base = process.env.R2_URL || "http://127.0.0.1:2417";
 const out = process.env.R2_OUTPUT || "/tmp/r2link/ui2/performance";
 const refs = (process.env.R2_COMPARE || "d964c8c,current").split(",");
@@ -48,12 +48,14 @@ function coreFiles(ref) {
   if (variant && fs.existsSync(variant)) return readDist(variant);
   const tree = fs.mkdtempSync(path.join(os.tmpdir(), "r2-core-"));
   execFileSync("git", ["worktree", "add", "--detach", tree, ref], { cwd: core, stdio: "ignore" });
+  // 旧版本的核心在仓库根目录。
+  const source = fs.existsSync(path.join(tree, "r2/package.json")) ? path.join(tree, "r2") : tree;
   try {
-    fs.symlinkSync(path.join(core, "node_modules"), path.join(tree, "node_modules"), "junction");
-    execFileSync(process.execPath, [path.join(tree, "scripts/build.mjs")], { cwd: tree, stdio: "inherit" });
-    return readDist(path.join(tree, "dist"));
+    fs.symlinkSync(path.join(core, "node_modules"), path.join(source, "node_modules"), "junction");
+    execFileSync(process.execPath, [path.join(source, "scripts/build.mjs")], { cwd: source, stdio: "inherit" });
+    return readDist(path.join(source, "dist"));
   } finally {
-    fs.rmSync(path.join(tree, "node_modules"), { force: true });
+    fs.rmSync(path.join(source, "node_modules"), { force: true });
     execFileSync("git", ["worktree", "remove", "--force", tree], { cwd: core, stdio: "ignore" });
   }
 }

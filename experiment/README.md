@@ -17,8 +17,8 @@ go run ./apps/neomega-viewer-r2/cmd/viewer -listen 127.0.0.1:2416
 
 ```sh
 node apps/neomega-viewer-r2/experiment/static-models.cjs
-./check.sh neomega-r2 apps/neomega-viewer-r2
-node --test neomega-r2/tests/*.mjs
+go test ./neomega-r2/r2/... ./apps/neomega-viewer-r2/...
+node --test neomega-r2/r2/tests/*.mjs
 ```
 
 `R2_URL` 替换服务地址，`R2_FIXTURE` 替换验证存档，`R2_OUTPUT` 替换输出目录。浏览器工具路径可用 `PLAYWRIGHT_MODULE` 和 `CHROME` 指定。默认结果写入 `/tmp/r2-static-models`。
@@ -40,7 +40,7 @@ node apps/neomega-viewer-r2/experiment/sources.cjs
 
 ## 同设置 GPU 对照
 
-不同阴影、视距和质量档位的 GPU 时间不能直接比较。`compare-renderer.cjs` 只替换浏览器从 `/r2/` 收到的渲染核心（`neomega-r2` 的 `dist`），应用页面、资源、服务和来源保持相同。旧版本在临时 git worktree 中用工作区的 TypeScript 构建，工作区文件不用切换。
+不同阴影、视距和质量档位的 GPU 时间不能直接比较。`compare-renderer.cjs` 只替换浏览器从 `/r2/` 收到的渲染核心（`neomega-r2/r2` 的 `dist`），应用页面、资源、服务和来源保持相同。旧版本在临时 git worktree 中用工作区的 TypeScript 构建，工作区文件不用切换。
 
 脚本使用“新天堂”的高空、树冠、建筑三个固定视角。设置为 1920×1080 原生分辨率、near 2、far 32、阴影和雾开启、游戏时间 10 点、水面时刻 0 秒。连续绘制预览帧，关闭累积与动态时间。每个视角收集 240 个 GPU 查询，去掉前 40 个再计算中位数和 P95；计时包含射线绘制与显示合成。脚本断言预览样本数为零，并保存参数、GPU、时间样本、界面截图及纯画布图片。
 
