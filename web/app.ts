@@ -10,7 +10,7 @@ import { createPicker } from "./picker.js";
 import { startupStage } from "/r2/common_ui/startup.js";
 
 // Electron embeds this page at r2://app. The GLSL inspection tools explicitly request WebGL.
-const useWebGPU = isSecureContext && location.protocol !== "r2:" && new URLSearchParams(location.search).get("backend") !== "webgl";
+const useWebGPU = isSecureContext && !!navigator.gpu && location.protocol !== "r2:" && new URLSearchParams(location.search).get("backend") !== "webgl";
 
 
 const canvas = element<HTMLCanvasElement>("view");
@@ -147,6 +147,7 @@ await startupStage("正在初始化图形设备…");
 renderer = await createRenderer(canvas, { useWebGPU, tier: settings.tier, onProgress: showCompile });
 await startupStage("正在准备场景…");
 const view = createView({
+  switchBackend: location.protocol !== "r2:",
   renderer, camera, settings,
   scene: () => ({ name: world.name, ocean: world.scene?.ocean, connection: world.connection }),
   onSettings: () => localStorage.setItem("neomega-r2-settings", JSON.stringify(settings)),

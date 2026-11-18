@@ -50,7 +50,7 @@ async function start() {
   document.title = world.name + " · R2 建筑预览";
   element("building-name").textContent = world.name;
   const renderer = await createRenderer(element<HTMLCanvasElement>("view"), {
-    useWebGPU: true,
+    useWebGPU: isSecureContext && !!navigator.gpu && new URLSearchParams(location.search).get("backend") !== "webgl",
     tier: settings.tier,
     readResource: async name => {
       if (!(name in resources)) throw Error("网页缺少渲染资源 " + name);
@@ -64,6 +64,7 @@ async function start() {
   near.disabled = true;
   near.title = "建筑快照只包含静态方块";
   const view = createView({
+    switchBackend: true,
     renderer, camera, settings, scene: () => ({ name: world.name, ocean: world.ocean }),
     onStats: ({ stats, median }) => {
       if (status.checkVisibility()) status.textContent = `${stats.sections} 个子区块 · ${stats.loaded}/${stats.wanted} 个 r2region · GPU ${median?.toFixed(2) ?? "…"} ms`;

@@ -20,7 +20,7 @@ go run ./apps/neomega-viewer-r2/cmd/viewer
 
 服务默认监听 `0.0.0.0:2412`。就绪后终端列出本机地址和网卡的 IPv4 访问地址。局域网客户端可以使用页面上的服务端文件选择器，限本机使用时可传 `-listen 127.0.0.1:2412`。`-version` 打印版本后退出。
 
-右上角显示实际渲染后端。本机回环地址和 HTTPS 默认使用 WebGPU；普通局域网 HTTP 页面使用 WebGL。Electron 使用随附环境的 WebGL。
+右上角显示实际渲染后端；点击标签即可切换后端并重新加载页面，离线 HTML 也支持此操作。本机回环地址和 HTTPS 默认使用 WebGPU；普通局域网 HTTP 页面使用 WebGL。Electron 使用随附环境的 WebGL。
 
 也可启动时直接打开：
 
