@@ -1,0 +1,16 @@
+{
+  "extends": "../../../neomega-r2/r2/tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "declaration": false,
+    "paths": {
+      "/r2/*": [
+        "../../../neomega-r2/r2/dist/*"
+      ]
+    }
+  },
+  "include": [
+    "*.ts"
+  ]
+}

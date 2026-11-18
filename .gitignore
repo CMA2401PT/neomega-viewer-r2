@@ -1,3 +1,4 @@
 /dist/
 /viewer
 .DS_Store
+/web/dist/

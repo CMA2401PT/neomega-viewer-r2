@@ -10,9 +10,11 @@ neOmega Viewer R2 前身是 neOmega Viewer (https://github.com/CMA2401PT/neomega
 
 ## 启动与使用
 
-在工作区根目录运行：
+首次使用源码时，先在工作区根目录构建网页和共享 UI，再启动服务。
 
 ```sh
+npm --prefix neomega-r2/r2 ci
+node apps/neomega-viewer-r2/scripts/build-web.mjs
 go run ./apps/neomega-viewer-r2/cmd/viewer -listen 127.0.0.1:2412
 ```
 
@@ -137,11 +139,9 @@ curl -X POST http://127.0.0.1:2412/api/textures \
 | `internal/server/`                   | 来源会话、区域缓存、HTTP 接口与 `/r2link` 数据源。切换世界后断开并拒绝旧会话。      |
 | `examples/java-source/`              | 最小的外部 R2Link 数据源。                                                          |
 | `internal/filebrowse/`               | 服务端文件浏览、各类来源识别与材质包选择。                                          |
-| `web/app.js`                         | 世界切换与外部连接、材质包与照片组装，同一绘制和累积循环。                          |
-| `web/hud.js`、`overlay.js`           | 坐标编辑、弹出面板、时间控件、坐标轴和临时读数。                                    |
-| `web/map.js`                         | 全屏地图相机、鼠标与触屏手势、拾取重试和区块占用叠加。                              |
-| `web/controls.js`、`movepad.js`      | 主相机飞行输入与触屏持续移动按钮。                                                  |
-| `web/picker.js`                      | 服务端存档和材质包目录选择。                                                        |
+| `web/app.ts`、`web/world-info.ts` | 切换本机或外部世界，应用材质包，显示来源与连接信息。 |
+| `web/picker.ts` | 服务端目录浏览、维度选择与转换进度。 |
+| `neomega-r2/r2/common_ui/` | 与静态 demo 共享的工具栏、读数、地图、坐标编辑、视图设置、飞行控制与绘制循环。 |
 | `neomega-r2`                         | 共享模型、世界会话、R2Link 数据源、纯数据场景准备、GPU 目录与统一求交。             |
 | `neomega-r2link`                     | R2Link 协议、Go 数据源会话、effector 与 block actor。                               |
 
@@ -149,7 +149,7 @@ curl -X POST http://127.0.0.1:2412/api/textures \
 
 ## 特殊对象的扩展位置
 
-Go 入口 `cmd/viewer/main.go` 选择需要启用的 effector 和 block actor 处理器。`internal/worlddata.World.Objects` 仅扫描近景中被处理器认领的方块，将状态、位置和 NBT 交给它们。浏览器入口 `web/app.js` 注册对应类型的外观工厂。工厂返回部件、贴图、包围盒和动画，公共实例层负责格子候选与射线绘制。
+Go 入口 `cmd/viewer/main.go` 选择需要启用的 effector 和 block actor 处理器。`internal/worlddata.World.Objects` 仅扫描近景中被处理器认领的方块，将状态、位置和 NBT 交给它们。浏览器入口 `web/app.ts` 注册对应类型的外观工厂。工厂返回部件、贴图、包围盒和动画，公共实例层负责格子候选与射线绘制。
 
 附魔台的活动书已通过这条链路接入。block actor 的处理器和传输接口已连通，并通过携带 NBT 的测试处理器验证；旗帜图案、告示牌排版等具体实现尚未添加。详细契约和新增实现的方法见 [核心说明](../../neomega-r2/r2/README.md#怎样添加-effector-和-block-actor)。含水方块暂只显示本体，不显示附加水层。
 
@@ -157,11 +157,11 @@ Go 入口 `cmd/viewer/main.go` 选择需要启用的 effector 和 block actor �
 
 ## 构建与验收
 
-应用网页和渲染核心都嵌入 Go 二进制。渲染核心是 TypeScript，`go build` 之前先构建它的 `dist`（首次执行 `npm ci`）。开发时可用 `-web ./apps/neomega-viewer-r2/web` 直接读取应用网页；核心取自嵌入的 `dist`，改核心后需重新构建并编译。
+应用网页、共享 HUD 和渲染核心都使用 TypeScript。构建脚本依次生成核心的 `dist/`、共享界面的 `dist/common_ui/` 和 Viewer 的 `web/dist/`，Go 将它们嵌入可执行文件。开发时用 `-web ./apps/neomega-viewer-r2/web` 可以直接从磁盘读取 Viewer 页面和编译结果；修改共享界面或渲染核心后需重新编译 Go 程序。
 
 ```sh
 npm --prefix neomega-r2/r2 ci
-npm --prefix neomega-r2/r2 run build
+node apps/neomega-viewer-r2/scripts/build-web.mjs
 npm --prefix neomega-r2/r2 run check
 npm --prefix neomega-r2/r2 test
 go vet ./neomega-r2/r2/... ./neomega-r2/go-link/... ./apps/neomega-viewer-r2/...

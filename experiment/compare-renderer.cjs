@@ -103,6 +103,7 @@ function coreFiles(ref) {
       page.on("pageerror", (error) => report.errors.push(String(error)));
       await page.route("**/r2/**", async (route) => {
         const name = new URL(route.request().url()).pathname.slice("/r2/".length);
+        if (name.startsWith("common_ui/")) return route.continue();
         const body = snapshot.files.get(name);
         if (body)
           await route.fulfill({

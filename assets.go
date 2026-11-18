@@ -3,5 +3,5 @@ package viewerr2
 
 import "embed"
 
-//go:embed web/*
+//go:embed web/*.html web/*.css web/dist/*.js
 var Web embed.FS
