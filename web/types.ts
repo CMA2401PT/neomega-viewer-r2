@@ -5,6 +5,7 @@ export interface OpenOptions {
   bedrockFix?: boolean;
   structureMemoryMiB?: number;
   structureWorkers?: number;
+  structureRoot?: string;
 }
 
 export interface Connection {

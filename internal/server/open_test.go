@@ -30,9 +30,10 @@ func TestStreamingStructureOpen(t *testing.T) {
 	server := New(nil, nil)
 	defer server.Close()
 	handler := server.Handler(fstest.MapFS{})
+	outputRoot := filepath.Join(t.TempDir(), "converted")
 	for _, memory := range []int{32, 64} {
 		before := server.Info().ID
-		body, err := json.Marshal(map[string]any{"path": path, "structureMemoryMiB": memory, "structureWorkers": 1, "bedrockFix": false})
+		body, err := json.Marshal(map[string]any{"path": path, "structureRoot": outputRoot, "structureMemoryMiB": memory, "structureWorkers": 1, "bedrockFix": false})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -71,5 +72,19 @@ func TestStreamingStructureOpen(t *testing.T) {
 		} else if terminal != "world" || progress == 0 || server.Info().ID == before {
 			t.Fatal(terminal, progress, server.Info())
 		}
+	}
+	if info := server.Info(); info.WorldPath != filepath.Join(outputRoot, "one") || info.StructureRoot != outputRoot {
+		t.Fatal(info)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(path), "one")); !os.IsNotExist(err) {
+		t.Fatal("不应写入源文件旁边", err)
+	}
+	other := filepath.Join(t.TempDir(), "one.schem")
+	if err := os.WriteFile(other, []byte("not a schematic"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := server.Open(t.Context(), OpenOptions{Path: other, StructureRoot: outputRoot})
+	if err != nil || !info.ReusedStructure || info.WorldPath != filepath.Join(outputRoot, "one") {
+		t.Fatal(info, err)
 	}
 }

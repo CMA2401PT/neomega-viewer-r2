@@ -39,6 +39,7 @@ type Info struct {
 	BedrockFix         bool          `json:"bedrockFix"`
 	StructureMemoryMiB int           `json:"structureMemoryMiB"`
 	StructureWorkers   int           `json:"structureWorkers"`
+	StructureRoot      string        `json:"structureRoot,omitempty"`
 }
 
 // OpenOptions 让网页只覆盖用户填写的选项，其余使用服务启动时的默认值。
@@ -48,6 +49,7 @@ type OpenOptions struct {
 	BedrockFix         *bool                    `json:"bedrockFix"`
 	StructureMemoryMiB int                      `json:"structureMemoryMiB"`
 	StructureWorkers   *int                     `json:"structureWorkers"`
+	StructureRoot      string                   `json:"structureRoot"`
 	Progress           func(structure.Progress) `json:"-"`
 }
 
@@ -123,6 +125,7 @@ func (s *Server) Open(ctx context.Context, request OpenOptions) (Info, error) {
 	options := s.Options
 	options.Path = request.Path
 	options.Dimension = request.Dimension
+	options.StructureRoot = request.StructureRoot
 	options.Structure.Progress = request.Progress
 	if request.BedrockFix != nil {
 		options.SkipBedrockFix = !*request.BedrockFix
@@ -155,6 +158,7 @@ func (s *Server) Open(ctx context.Context, request OpenOptions) (Info, error) {
 		BedrockFix:         !options.SkipBedrockFix,
 		StructureMemoryMiB: options.Structure.MemoryMiB,
 		StructureWorkers:   options.Structure.Workers,
+		StructureRoot:      options.StructureRoot,
 	}
 	old := s.current
 	s.current = newSession(info, source)

@@ -207,6 +207,7 @@ select.onchange = async () => {
       bedrockFix: world.bedrockFix,
       structureMemoryMiB: world.structureMemoryMiB,
       structureWorkers: world.structureWorkers,
+      structureRoot: world.structureRoot,
     });
   } catch (error) { select.value = world.dimension ?? ""; hud.error(String(error)); }
   finally { select.disabled = false; }
