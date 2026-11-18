@@ -1,0 +1,91 @@
+name: Build neOmega-R2 release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: apps/neomega-viewer-r2
+          persist-credentials: false
+      - name: Fetch pinned build dependencies
+        run: bash apps/neomega-viewer-r2/.github/release/checkout.sh
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: neomega-r2/r2/package-lock.json
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/neomega-viewer-r2/go.mod
+          cache-dependency-path: apps/neomega-viewer-r2/go.sum
+      - name: Build the viewer and offline web assets
+        run: |
+          npm ci --prefix neomega-r2/r2
+          node apps/neomega-viewer-r2/scripts/build-web.mjs
+      - name: Compile and package the four platforms
+        working-directory: apps/neomega-viewer-r2
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/release"
+          for target in darwin/arm64 windows/amd64 linux/amd64 linux/arm64; do
+            os=${target%/*}
+            arch=${target#*/}
+            binary=neOmega-R2
+            platform=$os
+            if [[ $os == windows ]]; then binary+=.exe; fi
+            if [[ $os == darwin ]]; then platform=macos; fi
+            archive="$GITHUB_WORKSPACE/release/neOmega-R2-$GITHUB_REF_NAME-$platform-$arch"
+            bin_dir="$RUNNER_TEMP/$os-$arch"
+            mkdir -p "$bin_dir"
+            GOOS=$os GOARCH=$arch go build -mod=readonly -trimpath \
+              -ldflags="-s -w -X main.version=$GITHUB_REF_NAME" -o "$bin_dir/$binary" ./cmd/viewer
+            if [[ $os == windows ]]; then
+              (cd "$bin_dir" && zip -q "$archive.zip" "$binary")
+            else
+              tar -C "$bin_dir" -czf "$archive.tar.gz" "$binary"
+            fi
+          done
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-packages
+          path: release/*
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: release-packages
+          path: release
+      - name: Publish packages to the tagged GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            assets=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+            for file in release/*; do
+              if ! grep -Fxq "${file##*/}" <<<"$assets"; then
+                gh release upload "$GITHUB_REF_NAME" "$file" --repo "$GITHUB_REPOSITORY"
+              fi
+            done
+          else
+            gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" \
+              --verify-tag --title "neOmega-R2 $GITHUB_REF_NAME" --generate-notes
+          fi

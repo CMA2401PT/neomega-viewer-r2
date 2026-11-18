@@ -1,83 +1,76 @@
-# neomega-viewer-r2：存档射线浏览器
+# neOmega-R2
 
-neOmega Viewer R2 前身是 neOmega Viewer (https://github.com/CMA2401PT/neomega-viewer)，但是采用了全射线渲染器 (neOmega R2, https://github.com/CMA2401PT/neomega-r2)，这使得其很适合大可视区块高性能渲染&光影支持。
+**v0.1.0** · 在浏览器里用射线渲染 Minecraft Java 和基岩版存档。服务端读取世界，浏览器通过 WebGPU 或 WebGL 2 绘制。视野内的栏杆、楼梯、花和跨格模型都有完整的静态外观；靠近时还可以看到附魔台上活动的书。
 
-这个应用把 Java／Bedrock 存档读取、流式调度和 R2 统一射线核心组合成可运行的浏览器。整个可见范围使用完整静态模型，包括栏杆、楼梯、花和跨格模型。近景额外启用已注册的 effector、block actor；静态形状不随近景距离改变。Go 对静态区域只做调色板映射。
+项目沿用 neOmega Viewer 的存档浏览方式，渲染核心换成了 neOmega R2。默认场景 **Möbius** 是一圈海晶灯构成的莫比乌斯环，悬在傍晚的海面上。[前身 neOmega Viewer](https://github.com/CMA2401PT/neomega-viewer) · [neOmega R2 渲染核心](https://github.com/CMA2401PT/neomega-r2)
 
-启动后显示内置默认场景 **Möbius**：海晶灯组成的莫比乌斯环立在无限海面上，夜幕中的月亮和灯环倒影共同构成开场画面。服务端把灯环作为普通方块来源，浏览器沿用存档的区域流式加载与地图；海面由渲染器按解析平面绘制。
+## 下载与启动
 
-屏幕底部悬浮的工具栏（HUD）提供来源选择、坐标和设置。文件夹按钮可以打开服务端机器上的 Java／Bedrock 世界目录、`level.dat`、Java PackFS 单文件和结构文件。原生存档与 PackFS 均只读打开。关闭存档会回到 Möbius 的开场视角和夜间时刻。
+从 [GitHub Releases](https://github.com/CMA2401PT/neomega-viewer-r2/releases) 选择对应系统的压缩包。程序已内嵌网页、渲染器和默认材质。
 
-## 启动与使用
+| 系统 | 压缩包名称中的平台 | 解压后运行 |
+| --- | --- | --- |
+| Windows x64 | `windows-amd64` | 双击 `neOmega-R2.exe` |
+| macOS（Apple 芯片） | `macos-arm64` | `./neOmega-R2` |
+| Linux x86-64 | `linux-amd64` | `./neOmega-R2` |
+| Linux ARM64 | `linux-arm64` | `./neOmega-R2` |
 
-首次使用源码时，先在工作区根目录构建网页和共享 UI，再启动服务。
-
-```sh
-npm --prefix neomega-r2/r2 ci
-node apps/neomega-viewer-r2/scripts/build-web.mjs
-go run ./apps/neomega-viewer-r2/cmd/viewer
-```
-
-服务默认监听 `0.0.0.0:2412`。就绪后终端列出本机地址和网卡的 IPv4 访问地址。局域网客户端可以使用页面上的服务端文件选择器，限本机使用时可传 `-listen 127.0.0.1:2412`。`-version` 打印版本后退出。
-
-右上角显示实际渲染后端；点击标签即可切换后端并重新加载页面，离线 HTML 也支持此操作。本机回环地址和 HTTPS 默认使用 WebGPU；普通局域网 HTTP 页面使用 WebGL。Electron 使用随附环境的 WebGL。
-
-也可启动时直接打开：
+启动后，打开终端中粗体白色的本机地址，默认是 <http://127.0.0.1:2412>。同一局域网里的设备可打开灰色的 IPv4 地址。**文件选择器浏览的是运行服务那台机器上的文件**，同一服务的页面共享当前存档。默认监听 `0.0.0.0:2412`，仅在本机使用可运行以下命令：
 
 ```sh
-go run ./apps/neomega-viewer-r2/cmd/viewer \
-  -listen 127.0.0.1:2412 -world '/path/to/java-world'
+./neOmega-R2 -listen 127.0.0.1:2412
 ```
 
-来源选择面板把“选择文件”和“打开”分开，方便在转换前展开选项，设置维度、Bedrock 邻接修复、结构转换内存预算与写出并发。双击目录进入其中，选择结构文件后点击“打开所选来源”；转换期间面板按读取、写出或解包阶段显示进度，关闭面板会取消转换。
+右上角的 `[webGPU]` 或 `[webGL]` 显示实际使用的后端。支持 WebGPU 的浏览器在本机回环地址和 HTTPS 下默认使用它，普通局域网 HTTP 使用 WebGL 2。两种后端都可用时，点击标签即可切换并重新加载页面。手机请横屏使用。
 
-打开面板的维度使用下拉选择。首次选择 Java 来源时先打开主世界，服务端返回扫描结果后可在场景信息里切换；Bedrock 直接提供三个标准维度。Java 维度使用存档内相对目录，标准维度是 `.`、`DIM-1`、`DIM1`，自定义维度使用 `dimensions/<命名空间>/<路径>`。打开时扫描可用维度并放进场景信息的下拉框。Bedrock 固定提供 `0`（主世界）、`1`（下界）、`2`（末地）。切换维度重新打开同一来源。相机优先使用出生点上方 12 格；出生点所在区块不存在时，落到所选维度已有内容附近。Bedrock 出生点 Y 超出维度范围时，从出生点区块的最高非空气 section 估算落点。
+## 打开存档与结构
 
-结构文件先生成可随机读取的世界：`.schem`、`.schematic`、`.litematic`、`.nbt` 生成 Java 存档，`.mcstructure`、`.mcworld` 生成 Bedrock 存档。输出在源文件旁去掉扩展名的同名目录，例如 `城堡.schem` → `城堡/`。已有存档直接复用；非空的其他目录报错并保留原内容。源文件更新后，移走旧输出目录再打开即可重新转换。场景信息会显示实际输出路径和复用状态。
+点击底部文件夹，选中来源后点击“打开”。在打开选项里可以选择维度、调整结构转换预算或关闭 Bedrock 邻接修复。双击目录进入下一级，转换进度显示在面板内。点击底部的世界名可查看路径、维度和加载信息，关闭存档会回到 Möbius。
 
-结构转换默认工作预算为 512 MiB，`-structure-memory-mib` 可调整，最小 64；`-structure-workers` 指定写出并发上限，默认 0 由 CPU 和预算决定。Bedrock 默认按邻居修复栅栏连接、楼梯拐角等属性，`-bedrock-fix=false` 可以关闭。修复只影响内存中的 Java 状态。网页打开选项默认采用启动参数。
+| 来源 | 支持的输入 |
+| --- | --- |
+| Java 存档 | 世界目录、`level.dat`、PackFS 单文件（`.pack`、`.packfs`） |
+| Bedrock 存档 | 含 `db` 的世界目录或其 `level.dat` |
+| 转换为 Java 存档 | `.schem`、`.schematic`、`.litematic`、`.nbt` |
+| 转换或解包为 Bedrock 存档 | `.mcstructure`、`.mcworld` |
+
+原生存档和 PackFS 以只读方式打开。通过 Viewer 打开结构文件时，会在源文件旁生成去掉扩展名的同名目录，例如 `城堡.schem` 对应 `城堡/`。已有可用存档会直接复用；源文件更新后，移走旧输出目录再打开即可重新转换。
+
+Java 维度使用存档内的相对目录，包括主世界 `.`、下界 `DIM-1`、末地 `DIM1` 和自定义的 `dimensions/<命名空间>/<路径>`。Bedrock 使用 `0`、`1`、`2`。打开存档后也可以在场景信息中切换维度。可显示的方块高度为 **Y = −64～447**，场景信息会统计已接收区域里超出范围的子区块。
 
 ```sh
-go run ./apps/neomega-viewer-r2/cmd/viewer \
-  -world '/path/to/world.pack' -dimension DIM-1
-go run ./apps/neomega-viewer-r2/cmd/viewer \
-  -world '/path/to/bedrock-world' -dimension 1 -bedrock-fix=false
-go run ./apps/neomega-viewer-r2/cmd/viewer \
-  -world '/path/to/城堡.schem' -structure-memory-mib 1024 -structure-workers 4
+./neOmega-R2 -world /path/to/world.pack -dimension DIM-1
+./neOmega-R2 -world /path/to/bedrock-world -dimension 1 -bedrock-fix=false
+./neOmega-R2 -world 城堡.schem -structure-memory-mib 1024 -structure-workers 4
 ```
 
-渲染窗口固定为 Y `[-64,448)`。越界子区块不显示，但世界可以正常打开。场景信息显示“有 N 个子区块（subchunk）超出可显示高度”，按已收到的 r2region 计数，数字来自数据源随 r2region 报告的 `clippedSections`。文件会话中的 `minY=-64`、`height=512` 描述这个窗口。
+结构转换默认使用 512 MiB 工作预算，最低 64 MiB。写出并发默认设为 `0`，由转换器按 CPU 和预算决定。Bedrock 邻接修复根据周围方块调整栅栏连接、楼梯拐角等属性，只影响内存中的显示结果。`-h` 可查看启动选项，`-version` 打印版本。
 
-拖动转向，WASD 按相机的水平朝向前后左右移动，抬头低头不改变移动高度。空格沿 Y 轴上升，Shift 沿 Y 轴下降。滚轮沿视线前后移动，按住 Shift 滚动时加大步长。点击底部 X、Y、Z 读数即可编辑，回车或箭头按钮跳转，Esc 或点到别处放弃编辑。存档名打开场景信息，齿轮打开设置，面板位于触发按钮上方。默认场景和存档均可飞行、使用地图和调整光照。设置保存在浏览器本地。
+## 飞行、地图与渲染
 
-触屏设备上，单指拖动场景转向，按住左下角的十字按钮水平移动，右侧两个按钮沿 Y 轴升降。移动按钮位于底部 HUD 上方，可一边按住按钮一边用另一根手指转向。隐藏 HUD 或打开全屏地图时，移动按钮一起隐藏。
+| 操作 | 鼠标与键盘 | 触屏 |
+| --- | --- | --- |
+| 转向 | 拖动场景 | 单指拖动场景 |
+| 水平移动 | WASD，方向跟随相机的水平朝向 | 左侧十字键 |
+| 升降 | 空格上升，Shift 下降 | 右侧上下键 |
+| 地图平移、旋转、缩放 | 左键拖动、右键拖动、滚轮 | 单指平移，双指旋转和缩放 |
 
-右上角第一排依次是体素渲染器、基础渲染器、光影渲染器（三选一，决定预览用哪一档，见 [四档渲染器](../../neomega-r2/r2/README.md#四档渲染器)）、静止时累积和隐藏 HUD；第二排依次是导出当前画面、拍照、时间流逝和时间滑块。隐藏 HUD 后只保留眼睛按钮，再按恢复。打开全屏地图时右上角工具栏保留，可以直接拍摄或导出鸟瞰图，地图的操作提示移到左上角。左上角显示随相机转动的坐标轴、实际渲染分辨率与 FPS。窗口宽度小于高度或 560 像素时，页面显示“仅支持横屏”。
+滚轮可沿视线前后移动，按住 Shift 滚动会加大步长。点击底部 X、Y、Z 读数可编辑坐标，回车跳转。地图上的方块也可以点选，“跳转”会把相机移到选中方块上方两格。左上角显示实际渲染分辨率和帧率，齿轮打开设置，设置保存在当前浏览器。
 
-设置分别控制近景和远景：
+### 画质、视距与时间
 
-- 近景只控制特效与方块实体外观，默认为半径 2 区块，可调为 1～16。水平范围为圆形，垂直范围为上下 `min(半径+1,12)` 个 section。section 是 16×16×16 的存储块。
-- 远景控制全部静态模型的可见范围，默认为半径 32 区块，可调为 16～96，步长 8。默认覆盖 1024×1024×512 方块，Y 为 -64..447。窗口按 128 方块对齐随相机移动，因此实际边界有对齐偏移。
-- 渲染分辨率默认为窗口尺寸 1.5×，每像素一条射线。分辨率可在屏幕原生与窗口尺寸 0.5×～2× 之间选择；在系统缩放为 1 的屏幕上，1.5× 或 2× 相当于超采样。不会为了显示帧率自动降低画质。
-- 预览默认使用光影渲染器，启动时只编译所选的一档。切换到尚未编译的档时，底部先显示编译提示再开始编译，对应按钮闪烁，完成前画面沿用上一档。体素与基础两档没有阴影、雾和水面效果，给较弱的设备使用。
-- 动态时间默认开启。Möbius 每次载入从 19:00 开始；离开 Möbius 打开存档或结构时，时间切到白天 10:00，启动时直接载入这些来源也从 10:00 开始。外部来源之间切换沿用当前时间。以上操作均保留用户对动态时间的开关设置。动态时间让滑块随昼夜移动，一天约 4 分钟。动态时间与静止时累积互斥，打开其中一个会关掉另一个。
-- 远景雾默认开启，只在远景视距边缘变浓，遮住地形的截断处；关闭后远处的地形直接截断在天空前。
-- 静止时累积默认关闭。打开后，相机、窗口尺寸、设置和已发布的数据都没有变化，且视野内没有动画对象时，画面逐帧累积、越来越干净，没有样本上限，画面一变就重新开始。累积总是使用累积渲染器，与预览选的档无关。累积渲染器较大，启动时不编译；第一次打开静止时累积或拍照时才编译，期间画面底部显示提示和已用时间，预览照常。
-- “导出当前画面”用当前预览档按当前视角重新渲染：尺寸为屏幕实际像素的 2 倍边长，每个像素 4×4 超采样（共 64 倍像素的样本），取满后自动保存 PNG；画面过大时按显卡纹理上限与 2400 万像素等比缩小。进行中再按一次或按 Esc 取消。
-- “拍照”总是使用累积渲染器，按当前视角离屏渲染照片，光线最多反弹 4 次。照片尺寸默认为渲染画面 2×，也可与渲染画面相同。按下后画面实时显示照片逐渐收敛，按钮下方显示已累积的样本数，没有上限；满意时再按一次保存 PNG，按 Esc 放弃。光照与拍照的原理见 [核心的光照说明](../../neomega-r2/r2/README.md#光照怎样计算)。
+- **预览**默认使用光影档。体素档用纯色表现方块，基础档显示模型和贴图，光影档加入阴影、雾和水面效果。切换时按需编译，面板会提示进度。[四档渲染器](https://github.com/CMA2401PT/neomega-r2/blob/main/r2/README.md#四档渲染器)
+- **近景半径**控制特效和方块实体外观，默认 2 区块，可调为 1～16。**远景半径**控制静态方块，默认 32 区块，可调为 16～96。默认窗口覆盖 1024×1024×512 方块。密集存档出现区域池容量不足时，可降低远景半径。
+- **渲染分辨率**默认是窗口尺寸的 1.5 倍，可选屏幕原生或 0.5～2 倍。远景雾默认开启，用于柔化视距边缘。
+- **时间流逝**默认开启，一昼夜约 4 分钟。Möbius 从 19:00 开始，从开场场景进入存档时切到 10:00。**静止时累积**默认关闭，与时间流逝互斥；开启后，静止画面持续采样，视图改变时重新累积。
 
-有待加载内容时，屏幕上方显示近景对象准备与远景覆盖。完成后显示“已加载”，约 1.5 秒后淡出。场景信息提供存档路径、静态子区块（subchunk）数、已发布 r2region 数、累计传输、r2region 显存用量、纹理分配和 GPU 时间。
+### 保存画面和建筑
 
-## 连接外部数据源
-
-游戏机器人、服务器插件或存档服务可以用 [R2Link](../../neomega-r2/go-link/README.md) 提供世界。点击底部的链接按钮，填写数据源的 `ws://` 或 `wss://` 地址：浏览器直接连接数据源，握手成功后才关闭当前存档，连不上时当前世界不受影响。存档名旁的圆点表示连接状态：青色为已连接，橙色闪烁为断线重连。断线时保留最后画面，每 3 秒重试，数据源回来后重新发送全部内容。数据源可以移动相机、更新世界名。关闭按钮断开连接并回到 Möbius。
-
-[java-source](examples/java-source/main.go) 是最小的示例数据源，把 Java 存档按浏览器的订阅逐区域发送：
-
-```sh
-go run ./apps/neomega-viewer-r2/examples/java-source -world /path/to/world
-# 连接面板填写 ws://127.0.0.1:2414/r2link
-```
+| 入口 | 保存内容 | 何时完成 |
+| --- | --- | --- |
+| 右上角「导出当前画面」 | 当前预览档的 PNG，按屏幕像素的两倍边长、4×4 超采样渲染 | 采满后自动保存，超大画面会按纹理上限和 2400 万像素上限缩小 |
+| 右上角「拍照」 | 累积渲染的 PNG，最多 4 次反弹，照片默认使用渲染画面的两倍边长 | 画面持续收敛，满意时再次点击保存，Esc 放弃 |
+| 底部「导出离线 HTML」 | 当前维度的静态世界、视角和材质，可在另一台设备上继续浏览 | 区域写入完成后下载单个 HTML |
 
 ## 全屏地图
 
@@ -85,13 +78,13 @@ go run ./apps/neomega-viewer-r2/examples/java-source -world /path/to/world
 
 地图以主相机位置为中心，初始北方朝上、俯角 70°。左键拖动平移，右键拖动旋转和调整俯角，滚轮围绕光标缩放。触屏上单指拖动平移，双指同时旋转和缩放，缩放时两指中点下的地面跟随手指。手指数变化后从当前视图继续操作。底部滑块也可以缩放。鼠标单击或触屏轻点方块显示整数坐标与命中面，“跳转”把主相机移到方块上方两格并收起地图。Esc 或“关闭”返回原视图。点到尚未加载的区域时，地图把窗口移过去，发布完成后自动沿原来的射线再拾取一次。
 
-右上角的小面板始终显示地图操作说明，并按鼠标或触屏显示对应的手势。
+左上角显示当前输入设备的地图操作提示。右上角保留渲染工具，可直接拍摄鸟瞰图。
 
 地图平移只改变远景窗口中心，近景对象仍跟随主相机。地图叠加层显示主相机朝向和选中位置，收起地图后远景窗口回到主相机附近。
 
 画面在地面上的长边超过远景直径（远景半径 × 2 区块）的 √2 倍时，地图切换为区块占用图；阈值随远景半径调整。占用图以浅色表示来源中存在的区块，用来浏览整个场景的分布；点击某处会定位并放大回射线尺度。
 
-区块占用表经 R2Link 的 `chunks` 请求取得，编码见 [占用表](../../neomega-r2/go-link/README.md#占用表)。每个世界请求一次，外部数据源更新世界描述时重新请求；服务端对每个存档会话只扫描一次区域文件。Java 存档按覆盖 32×32 区块的 `.mca` 文件建立索引，Möbius 按同样的粒度登记环所在的区块；它们都与流式加载的 8×8 区块区域采用不同粒度。网页把每条记录变成 32×32 的离屏位图。可见范围内的区域位图先在同一张离屏画布中按区块坐标拼接，再整体按地图相机缩放旋转。采样使用最近邻，区域交界处不会因分别绘制的边缘抗锯齿而留下浅色接缝。
+区块占用表经 R2Link 的 `chunks` 请求取得，编码见 [占用表](https://github.com/CMA2401PT/neomega-r2/blob/main/go-link/README.md#占用表)。每个世界请求一次，外部数据源更新世界描述时重新请求；服务端对每个存档会话只扫描一次区域文件。Java 存档按覆盖 32×32 区块的 `.mca` 文件建立索引，Möbius 按同样的粒度登记环所在的区块；它们都与流式加载的 8×8 区块区域采用不同粒度。网页把每条记录变成 32×32 的离屏位图。可见范围内的区域位图先在同一张离屏画布中按区块坐标拼接，再整体按地图相机缩放旋转。采样使用最近邻，区域交界处不会因分别绘制的边缘抗锯齿而留下浅色接缝。
 
 ## 使用 Java 材质包
 
@@ -99,7 +92,7 @@ go run ./apps/neomega-viewer-r2/examples/java-source -world /path/to/world
 
 支持颜色图片及同名 labPBR `_n`／`_s` 图片。labPBR 把法线、AO、高度、高光和自发光等属性保存为数据通道，核心会按颜色图相同的层号或图集区域组织它们。没有配套图时使用默认材质数据。动画贴图按 `.mcmeta` 的首帧显示。
 
-“贴图尺寸上限”默认 128，可选 16～512。纹理数组按包内所用图片的最大尺寸统一层边长，但不超过上限；小图最近点放大，大图缩小。只选 128 上限不会把原版自动放大到 128。较高尺寸同时增加颜色、法线和高光的显存，估算公式见 [核心材质包说明](../../neomega-r2/r2/README.md#材质包怎样替换贴图)。
+“贴图尺寸上限”默认 128，可选 16～512。纹理数组按包内所用图片的最大尺寸统一层边长，但不超过上限；小图最近点放大，大图缩小。只选 128 上限不会把原版自动放大到 128。较高尺寸同时增加颜色、法线和高光的显存，估算公式见 [核心材质包说明](https://github.com/CMA2401PT/neomega-r2/blob/main/r2/README.md#材质包怎样替换贴图)。
 
 应用通过 `POST /api/textures` 把路径和上限交给核心，响应包含整套贴图及匹配的透明度数据。后台线程用已缓存的存档区域重建镂空分类对应的空间目录，完成后同帧替换 GPU 资源。因此替换树叶或给石头增加透明孔时，颜色、遮挡与阴影依据的是同一份图片，切换不需要重新打开存档或重新下载区域。
 
@@ -114,57 +107,18 @@ curl -X POST http://127.0.0.1:2412/api/textures \
 
 这个接口只返回资源，不修改服务端存档会话；网页接收后负责把结果应用到自己的渲染器。
 
-## 为什么移动不必重新加载整个窗口
-
-网页从 `GET /api/world` 获取当前会话。`loaded: true` 表示存在可加载的来源，存档与内置场景都满足这一点。内置场景的 `name` 为 `Möbius`、`path` 为空，并额外携带 `scene`：`ocean` 是海面 Y 坐标，`camera` 包含 `position`、`yaw`、`pitch`，角度使用弧度，`time` 以小时表示开场时刻。顶层 `position` 与开场相机位置一致。存档响应省略 `scene`。`POST /api/world/open` 接收 `path`、`dimension`、`bedrockFix`、`structureMemoryMiB`、`structureWorkers`。默认返回 JSON 会话描述；请求头 `Accept: application/x-ndjson` 时逐行返回 `progress` 消息，最后返回 `world` 或 `error`。`POST /api/world/close` 返回 Möbius 会话描述，关闭会恢复内置场景。
-
-世界内容不走 HTTP 接口：服务端在 `GET /r2link?world=<会话 id>` 上把当前世界作为 [R2Link](../../neomega-r2/go-link/README.md) 数据源提供给同源页面，网页用核心的 `r2linkSource` 连接它，和连接外部数据源是同一条路径。会话编号不是当前世界时返回 HTTP 409；打开或关闭世界会断开连到旧世界的页面，页面随即读取 `/api/world` 跟随新世界，别的页面打开的存档也因此同步。
-
-服务端读取和解压存档，仅把调色板条目换成方块哈希（渲染器按资源包的状态表解释），保留压缩格子索引，不生成模型、剔面或合并网格。一个区域包含 8×8 区块；服务端为每个世界保留最多约 64 MiB 的区域缓存，所有连接共用 4 个读取名额。Möbius 的区域在首次读取时生成一次，之后各会话复用，没有特殊对象。
-
-加载范围、后台准备与 GPU 发布由核心的世界会话（[WorldSession](../../neomega-r2/r2/README.md#世界会话与数据源)）负责。会话的订阅经 R2Link 交给服务端，服务端优先读取靠近相机的区域，不再需要的区域立即取消读取；后台线程登记跨格片段并生成空域掩码；主线程每帧发布一个完成的区域，未完成部分稍后补齐。移动时复用重叠区域，离开范围的区域撤销候选并回收地址。静态窗口周围保留一圈来源区域，保证边界模型完整。近景视距变化只更新特殊对象；对象候选没有变化的静态区域不重新准备，也不重新传输索引。
-
-来源、渲染与应用调度分为三个边界：
-
-| 位置                                 | 责任                                                                                |
-| ------------------------------------ | ----------------------------------------------------------------------------------- |
-| `neomega-converter-core/worldinput/` | 两个 viewer 共用的路径识别、结构准备、维度扫描、原生只读句柄与读取关闭屏障。        |
-| `internal/worldsource/`              | 将原生来源接到 Java 区块；为 Bedrock 组合转换器和可选 fixer。                       |
-| `internal/mobius/`                   | 海晶灯莫比乌斯环、开场取景与只读场景缓存。                                          |
-| `internal/worlddata/`                | Java 区块变成 R2Link 区域与近景对象，固定高度裁剪。                                 |
-| `internal/server/`                   | 来源会话、区域缓存、HTTP 接口与 `/r2link` 数据源。切换世界后断开并拒绝旧会话。      |
-| `examples/java-source/`              | 最小的外部 R2Link 数据源。                                                          |
-| `internal/filebrowse/`               | 服务端文件浏览、各类来源识别与材质包选择。                                          |
-| `web/app.ts`、`web/world-info.ts` | 切换本机或外部世界，应用材质包，显示来源与连接信息。 |
-| `web/picker.ts` | 服务端目录浏览、维度选择与转换进度。 |
-| `neomega-r2/r2/common_ui/` | 与静态 demo 共享的工具栏、读数、地图、坐标编辑、视图设置、飞行控制与绘制循环。 |
-| `neomega-r2`                         | 共享模型、世界会话、R2Link 数据源、纯数据场景准备、GPU 目录与统一求交。             |
-| `neomega-r2link`                     | R2Link 协议、Go 数据源会话、effector 与 block actor。                               |
-
-本应用通过 converter 组合 [fix-utils](../../neomega-r2/fix-utils/README.md)。核心 neomega-r2 保持独立，只接收 Java 状态对应的静态模型编号。远景与近景使用同一份来源索引，但 NBT 外观与特效仅由近景对象接口处理。
-
-## 特殊对象的扩展位置
-
-Go 入口 `cmd/viewer/main.go` 选择需要启用的 effector 和 block actor 处理器。`internal/worlddata.World.Objects` 仅扫描近景中被处理器认领的方块，将状态、位置和 NBT 交给它们。浏览器入口 `web/app.ts` 注册对应类型的外观工厂。工厂返回部件、贴图、包围盒和动画，公共实例层负责格子候选与射线绘制。
-
-附魔台的活动书已通过这条链路接入。block actor 的处理器和传输接口已连通，并通过携带 NBT 的测试处理器验证；旗帜图案、告示牌排版等具体实现尚未添加。详细契约和新增实现的方法见 [核心说明](../../neomega-r2/r2/README.md#怎样添加-effector-和-block-actor)。含水方块暂只显示本体，不显示附加水层。
-
-区域池预留 256 MiB，缩小视距回收池内地址，切换场景时释放旧池，并为新来源重新建立池。远景半径超过 48 时，密集存档可能超出容量，此时会显示错误，可降低远景视距。文件会话按相机流式读取固定内容，查看磁盘上的外部修改需重新打开。
-
 ## 导出离线建筑网页
 
-点击底部 HUD 的「导出离线 HTML」下载当前维度。网页从点击时的相机坐标和朝向开始，内嵌已经应用的材质和模型表，其他显示设置使用播放器默认值。初始使用基础档，光影、累积和拍照按需编译。把 HTML 复制到支持 WebGPU 的设备即可离线打开。
+点击底部 HUD 的「导出离线 HTML」下载当前维度。网页从点击时的相机坐标和朝向开始，内嵌已经应用的材质和模型表，其他显示设置使用播放器默认值。初始使用基础档，光影、累积和拍照按需编译。双击 HTML 即可离线浏览，右上角支持切换 WebGPU 和 WebGL 2。
 
 导出会读取该维度区块占用表里的全部静态区域，包含视野外的建筑。每个非空区域单独压缩，浏览时按需解压。沿用 R2 的 Y = −64～447 高度范围和已用调色板，并省略全空气子区块及动态对象。内置场景和提供区块占用表的 R2Link 数据源也可导出。
 
-批处理可以使用同一个 viewer 可执行文件。命令行导出默认使用原版材质、自动取景和全部非空维度。`-dimension` 可指定单个维度。
+批处理使用同一个可执行文件的 `export` 子命令。命令行导出默认使用原版材质、自动取景和全部非空维度。`-dimension` 可指定单个维度。省略 `-o` 时，HTML 保存在输入旁，使用相同的基础文件名。命令行转换结构时使用临时目录，导出结束后自动清理。
 
 ```sh
-viewer export -o pavilion.html pavilion.schem
-viewer export -dimension DIM-1 -template my-template.html -o nether.html ./my-world
+./neOmega-R2 export -o pavilion.html pavilion.schem
+./neOmega-R2 export -dimension DIM-1 -template my-template.html -o nether.html ./my-world
 ```
-
-可以用 `node apps/neomega-viewer-r2/experiment/exporter.cjs pavilion.html` 做浏览器验收。它关闭网络，直接打开文件，检查地图、首屏加载与着色器的实际编译顺序。
 
 ### 自定义导出模板
 
@@ -179,35 +133,99 @@ viewer export -dimension DIM-1 -template my-template.html -o nether.html ./my-wo
 
 `R2_WORLD` 必须出现一次，导出器会在这里写入版本为 1 的 JSON 清单（`#r2-world`）、各维度的区块位图（`#r2-chunks-维度编号`），以及非空区域的 `script[data-dimension][data-r2-region]`。区域坐标格式为 `x/z`，区域内容是 R2Link 的 `EncodeRegion` 二进制，位图和区域均经 gzip 压缩再用 Base64 编码。维度编号见清单中的 `dimensions[].key`。实现了自己播放器的模板可以省略 `R2_VIEWER` 并直接使用这些数据；自定义的脚本、字体和图片也要内联才能随文件离线分发。
 
-## 构建与验收
+## 连接外部数据源
 
-应用网页、共享 HUD 和渲染核心都使用 TypeScript。构建脚本依次生成核心的 `dist/`、共享界面的 `dist/common_ui/` 和 Viewer 的 `web/dist/`，Go 将它们嵌入可执行文件。开发时用 `-web ./apps/neomega-viewer-r2/web` 可以直接从磁盘读取 Viewer 页面和编译结果；修改共享界面或渲染核心后需重新编译 Go 程序。
+游戏机器人、服务器插件或存档服务可以用 [R2Link](https://github.com/CMA2401PT/neomega-r2/blob/main/go-link/README.md) 提供世界。点击底部的链接按钮，填写数据源的 `ws://` 或 `wss://` 地址：浏览器直接连接数据源，握手成功后才关闭当前存档，连不上时当前世界不受影响。存档名旁的圆点表示连接状态：青色为已连接，橙色闪烁为断线重连。断线时保留最后画面，每 3 秒重试，数据源回来后重新发送全部内容。数据源可以移动相机、更新世界名。关闭按钮断开连接并回到 Möbius。
+
+[java-source](examples/java-source/main.go) 是一个最小的数据源示例。在 Viewer 仓库根目录运行它，即可按浏览器的订阅逐区域发送 Java 存档。
 
 ```sh
-npm --prefix neomega-r2/r2 ci
+go run ./examples/java-source -world /path/to/world
+# 连接面板填写 ws://127.0.0.1:2414/r2link
+```
+
+## 服务端与渲染核心
+
+网页从 `GET /api/world` 获取当前会话。`loaded: true` 表示存在可加载的来源，存档与内置场景都满足这一点。内置场景的 `name` 为 `Möbius`、`path` 为空，并额外携带 `scene`：`ocean` 是海面 Y 坐标，`camera` 包含 `position`、`yaw`、`pitch`，角度使用弧度，`time` 以小时表示开场时刻。顶层 `position` 与开场相机位置一致。存档响应省略 `scene`。`POST /api/world/open` 接收 `path`、`dimension`、`bedrockFix`、`structureMemoryMiB`、`structureWorkers`。默认返回 JSON 会话描述；请求头 `Accept: application/x-ndjson` 时逐行返回 `progress` 消息，最后返回 `world` 或 `error`。`POST /api/world/close` 返回 Möbius 会话描述，关闭会恢复内置场景。
+
+世界内容不走 HTTP 接口：服务端在 `GET /r2link?world=<会话 id>` 上把当前世界作为 [R2Link](https://github.com/CMA2401PT/neomega-r2/blob/main/go-link/README.md) 数据源提供给同源页面，网页用核心的 `r2linkSource` 连接它，和连接外部数据源是同一条路径。会话编号不是当前世界时返回 HTTP 409；打开或关闭世界会断开连到旧世界的页面，页面随即读取 `/api/world` 跟随新世界，别的页面打开的存档也因此同步。
+
+服务端读取和解压存档，仅把调色板条目换成方块哈希（渲染器按资源包的状态表解释），保留压缩格子索引，不生成模型、剔面或合并网格。一个区域包含 8×8 区块；服务端为每个世界保留最多约 64 MiB 的区域缓存，所有连接共用 4 个读取名额。Möbius 的区域在首次读取时生成一次，之后各会话复用，没有特殊对象。
+
+加载范围、后台准备与 GPU 发布由核心的世界会话（[WorldSession](https://github.com/CMA2401PT/neomega-r2/blob/main/r2/README.md#世界会话与数据源)）负责。会话的订阅经 R2Link 交给服务端，服务端优先读取靠近相机的区域，不再需要的区域立即取消读取；后台线程登记跨格片段并生成空域掩码；主线程每帧发布一个完成的区域，未完成部分稍后补齐。移动时复用重叠区域，离开范围的区域撤销候选并回收地址。静态窗口周围保留一圈来源区域，保证边界模型完整。近景视距变化只更新特殊对象；对象候选没有变化的静态区域不重新准备，也不重新传输索引。
+
+### 代码位置
+
+| 位置 | 责任 |
+| --- | --- |
+| `neomega-converter-core/worldinput/` | 两个 viewer 共用的路径识别、结构准备、维度扫描、原生只读句柄与读取关闭屏障。 |
+| `internal/worldsource/` | 将原生来源接到 Java 区块；为 Bedrock 组合转换器和可选 fixer。 |
+| `internal/mobius/` | 海晶灯莫比乌斯环、开场取景与只读场景缓存。 |
+| `internal/worlddata/` | Java 区块变成 R2Link 区域与近景对象，固定高度裁剪。 |
+| `internal/server/` | 来源会话、区域缓存、HTTP 接口与 `/r2link` 数据源。切换世界后断开并拒绝旧会话。 |
+| `examples/java-source/` | 最小的外部 R2Link 数据源。 |
+| `internal/filebrowse/` | 服务端文件浏览、各类来源识别与材质包选择。 |
+| `web/app.ts`、`web/world-info.ts` | 切换本机或外部世界，应用材质包，显示来源与连接信息。 |
+| `web/picker.ts` | 服务端目录浏览、维度选择与转换进度。 |
+| `neomega-r2/r2/common_ui/` | 与静态 demo 共享的工具栏、读数、地图、坐标编辑、视图设置、飞行控制与绘制循环。 |
+| `neomega-r2` | 共享模型、世界会话、R2Link 数据源、纯数据场景准备、GPU 目录与统一求交。 |
+| `neomega-r2link` | R2Link 协议、Go 数据源会话、effector 与 block actor。 |
+
+本应用通过 converter 组合 [fix-utils](https://github.com/CMA2401PT/neomega-r2/blob/main/fix-utils/README.md)。核心 neomega-r2 保持独立，只接收 Java 状态对应的静态模型编号。远景与近景使用同一份来源索引，但 NBT 外观与特效仅由近景对象接口处理。
+
+### 特殊对象的扩展位置
+
+Go 入口 `cmd/viewer/main.go` 选择需要启用的 effector 和 block actor 处理器。`internal/worlddata.World.Objects` 仅扫描近景中被处理器认领的方块，将状态、位置和 NBT 交给它们。浏览器入口 `web/app.ts` 注册对应类型的外观工厂。工厂返回部件、贴图、包围盒和动画，公共实例层负责格子候选与射线绘制。
+
+附魔台的活动书已通过这条链路接入。block actor 的处理器和传输接口已连通，并通过携带 NBT 的测试处理器验证；旗帜图案、告示牌排版等具体实现尚未添加。详细契约和新增实现的方法见 [核心说明](https://github.com/CMA2401PT/neomega-r2/blob/main/r2/README.md#怎样添加-effector-和-block-actor)。含水方块暂只显示本体，不显示附加水层。
+
+区域池预留 256 MiB，缩小视距回收池内地址，切换场景时释放旧池，并为新来源重新建立池。远景半径超过 48 时，密集存档可能超出容量，此时会显示错误，可降低远景视距。文件会话按相机流式读取固定内容，查看磁盘上的外部修改需重新打开。
+
+## 从源码构建
+
+Viewer 使用 Go 1.25.5 和 Node.js 24。Go 模块和网页构建均按同一工作区的相对路径寻找 R2、存档转换器等依赖。已有完整工作区时，直接从工作区根目录执行第二组命令。
+
+在新的空目录中，可按发布工作流相同的依赖版本准备源码（Bash）：
+
+```sh
+mkdir -p apps
+git clone --branch v0.1.0 https://github.com/CMA2401PT/neomega-viewer-r2.git apps/neomega-viewer-r2
+GITHUB_WORKSPACE="$PWD" bash apps/neomega-viewer-r2/.github/release/checkout.sh
+```
+
+构建网页和离线播放器，再把它们嵌入 Viewer：
+
+```sh
+npm ci --prefix neomega-r2/r2
 node apps/neomega-viewer-r2/scripts/build-web.mjs
-npm --prefix neomega-r2/r2 run check
-npm --prefix neomega-r2/r2 test
-go vet ./neomega-r2/r2/... ./neomega-r2/go-link/... ./apps/neomega-viewer-r2/...
-go test ./neomega-r2/r2/... ./neomega-r2/go-link/... ./apps/neomega-viewer-r2/...
-go run ./apps/neomega-viewer-r2/experiment/fixture -out /tmp/neomega-r2-java-fixture
-go run ./apps/neomega-viewer-r2/experiment/fixture -out /tmp/neomega-r2-static-fixture -static
-R2_URL=http://127.0.0.1:2413 node apps/neomega-viewer-r2/experiment/static-models.cjs
-R2_URL=http://127.0.0.1:2413 node apps/neomega-viewer-r2/experiment/browser.cjs
-R2_URL=http://127.0.0.1:2413 node apps/neomega-viewer-r2/experiment/ui.cjs
-R2_URL=http://127.0.0.1:2413 node apps/neomega-viewer-r2/experiment/mobius.cjs
+cd apps/neomega-viewer-r2
+go build -trimpath -o neOmega-R2 ./cmd/viewer
+./neOmega-R2
 ```
 
-浏览器验收需先在 2413 启动应用服务。静态模型脚本对照近景半径 1 与 16 的同一画面，验证远景形状、跨区片段和特殊对象的独立启停。普通流式验证使用 `browser.cjs`。`ui.cjs` 验证透视与高空正交拾取，并用真实存档在 1280×720、1920×1080 下生成界面截图，结果默认写入 `/tmp/r2ui/`。
+本地构建默认显示 `dev`。发布构建通过 Go 链接参数把 tag 写入 `-version`。开发页面时，`-web ./web` 可从磁盘读取宿主页面；更新共享 HUD、渲染核心或嵌入的离线播放器后，需要重新构建可执行文件。
 
-`mobius.cjs` 独立验证默认场景的流式加载、协议解码、海面绘制参数、地图、拍照和关闭恢复，并在 1280×720、1920×1080 下截图，默认输出到 `/tmp/r2mobius/`。工具路径、输出与结果解释见 [验收说明](experiment/README.md)。
+### 验收
 
-不含调试符号的发行构建：
+在 Viewer 仓库根目录运行：
 
 ```sh
-mkdir -p apps/neomega-viewer-r2/dist
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags='-s -w' \
-  -o apps/neomega-viewer-r2/dist/neomega-viewer-r2-windows-amd64.exe ./apps/neomega-viewer-r2/cmd/viewer
-CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags='-s -w' \
-  -o apps/neomega-viewer-r2/dist/neomega-viewer-r2-macos-arm64 ./apps/neomega-viewer-r2/cmd/viewer
+go test ./...
+go vet ./...
+npm --prefix ../../neomega-r2/r2 run check
+npm --prefix ../../neomega-r2/r2 test
 ```
+
+安装 Chrome 并准备好 Playwright 后，运行 `node experiment/exporter.cjs snapshot.html` 检查已导出的网页。脚本会在断网环境中直接打开文件，检查地图、首屏加载和着色器编译顺序。若 Playwright 安装在其他位置，可用 `PLAYWRIGHT_MODULE` 指定模块路径。真实存档、静态模型、界面截图和性能对照的运行方法见[浏览器验收说明](experiment/README.md)。
+
+## 发布新版本
+
+在 Viewer 仓库提交准备发布的代码，给该提交打上 `v` 开头的版本 tag 并推送。以下用下一版 `v0.1.1` 举例：
+
+```sh
+git push origin main
+git tag -a v0.1.1 -m "neOmega-R2 v0.1.1"
+git push origin v0.1.1
+```
+
+推送 tag 后可在 **Actions → Build neOmega-R2 release** 查看进度。四个平台全部编译成功后，压缩包会附到对应的 GitHub Release。每次发布使用新的 tag；需要升级渲染器或转换器时，先更新并提交[依赖版本](.github/release/checkout.sh)，再打 tag。[发布工作流](.github/workflows/release.yml)
