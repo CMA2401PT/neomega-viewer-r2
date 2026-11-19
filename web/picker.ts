@@ -47,6 +47,20 @@ export function createPicker(openWorld: OpenWorld) {
     litematic: "Java 结构 · litematic", nbt: "Java 结构 · nbt",
     mcstructure: "Bedrock 结构", mcworld: "Bedrock 世界包",
   };
+  // 列表图标只区分三类：可直接打开的存档、需要转换的结构文件、普通目录和其他文件。
+  const icons: Record<string, string> = {
+    directory: "i-world", bedrock: "i-world", level: "i-world", mcworld: "i-world", pack: "i-world",
+    schem: "i-structure", schematic: "i-structure", litematic: "i-structure", nbt: "i-structure", mcstructure: "i-structure",
+    folder: "i-folder", texture: "i-image",
+  };
+  function icon(name: string) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"),
+      use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    svg.setAttribute("aria-hidden", "true");
+    use.setAttribute("href", "#" + name);
+    svg.append(use);
+    return svg;
+  }
   /** Bedrock 固定三个维度，Java 首次打开主世界，再使用服务端扫描的列表。 */
   function setDimensions(values: string[] = [""]) {
     dimension.replaceChildren(...values.map((value) => {
@@ -92,6 +106,7 @@ export function createPicker(openWorld: OpenWorld) {
       document.querySelector<HTMLElement>("#roots")!.replaceChildren();
       for (const root of listing.roots) {
         const button = document.createElement("button");
+        button.className = "chip";
         button.textContent = root.name;
         button.onclick = () => browse(root.path);
         document.querySelector<HTMLElement>("#roots")!.append(button);
@@ -107,7 +122,8 @@ export function createPicker(openWorld: OpenWorld) {
         name.textContent = entry.name;
         label.className = "kind";
         label.textContent = labels[entry.kind] || entry.kind;
-        row.append(name, label);
+        name.className = "name";
+        row.append(icon(icons[entry.kind] ?? "i-file"), name, label);
         row.onclick = () => {
           if (!entry.openable) return browse(entry.path);
           selected = input.value = entry.path;
@@ -121,8 +137,10 @@ export function createPicker(openWorld: OpenWorld) {
         item.append(row);
         if (kind === "world" && entry.directory) {
           const use = document.createElement("button");
-          use.className = "use-output-dir";
-          use.textContent = "设置为转换输出目录";
+          use.className = "use-output-dir icon-button";
+          use.title = "设为转换输出目录";
+          use.setAttribute("aria-label", `把 ${entry.name} 设为转换输出目录`);
+          use.append(icon("i-outdir"));
           use.onclick = () => setRoot(entry.path);
           item.append(use);
         }
@@ -235,11 +253,11 @@ export function createPicker(openWorld: OpenWorld) {
     document.querySelector<HTMLElement>("#file-drop-title")!.textContent = kind === "pack"
       ? "将材质包 ZIP 或目录拖到这里使用"
       : "将存档目录或文件拖到这里打开";
-    dialog.querySelector("h2")!.textContent = kind === "pack" ? "选择 材质包" : "打开存档或结构";
+    dialog.querySelector("h2")!.textContent = kind === "pack" ? "选择材质包" : "打开存档或结构";
     document.querySelector<HTMLButtonElement>("#open-directory")!.textContent = kind === "pack" ? "使用材质包" : "打开所选来源";
     document.querySelector<HTMLElement>("#source-hint")!.textContent = kind === "pack"
       ? "选择 zip 或包含 assets 的目录，也可直接输入路径。"
-      : "选择文件后点击打开；双击存档目录可浏览内部。指向目录可将它设为转换输出目录。";
+      : "选中后点「打开所选来源」；双击存档目录可浏览内部。目录右侧的图标把它设为结构转换的输出目录。";
     dialog.showModal();
     browse(world.path || paths[kind]);
   };

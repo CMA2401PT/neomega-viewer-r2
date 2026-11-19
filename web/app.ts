@@ -15,12 +15,10 @@ const useWebGPU = isSecureContext && !!navigator.gpu && location.protocol !== "r
 
 // 帮助使用模态窗口，阅读时暂停场景键盘操作，关闭后由浏览器归还焦点。
 const help = element<HTMLDialogElement>("help");
-for (const id of ["help-open", "landscape-help"]) {
-  element(id).onclick = () => {
-    closePopovers();
-    help.showModal();
-  };
-}
+element("help-open").onclick = () => {
+  closePopovers();
+  help.showModal();
+};
 help.onkeydown = event => event.stopPropagation();
 
 const canvas = element<HTMLCanvasElement>("view");

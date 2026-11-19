@@ -281,7 +281,8 @@ fs.mkdirSync(out + "/shots", { recursive: true });
       assert.equal(await page.evaluate(() => viewerR2.state.error), 0);
       await page.setViewportSize({ width: 420, height: 800 });
       await page.waitForTimeout(100);
-      assert(await page.locator("#landscape").isVisible());
+      // 竖屏也可以直接使用：底栏折成两行，坐标输入仍然可见。
+      assert(await page.locator("#teleport").isVisible());
       await shot("portrait-420x800");
       await context.close();
     }

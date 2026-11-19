@@ -11,14 +11,26 @@
     <body>
         <svg class="app-symbols" aria-hidden="true">
             <symbol id="i-html" viewBox="0 0 24 24">
-                <path d="M5 3.5h9l5 5v12H5Z" />
-                <path d="M14 3.5v5h5M10 12l-3 2.5 3 2.5m4-5 3 2.5-3 2.5" />
+                <path d="M13.5 3.5h-7A1.5 1.5 0 0 0 5 5v14a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19V9Z" />
+                <path d="M13.5 3.5V9H19m-9 3.5-2 2 2 2m4-4 2 2-2 2" />
             </symbol>
             <symbol id="i-help" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="9" />
-                <path
-                    d="M9.4 9a2.7 2.7 0 0 1 5.3.3c0 2-2.7 2.2-2.7 4.6M12 17h.01"
-                />
+                <path d="M9.4 9.3a2.7 2.7 0 0 1 5.2.6c0 1.9-2.6 2.1-2.6 4.1M12 17.2h.01" />
+            </symbol>
+            <!-- 文件列表按来源种类区分：存档是实心方块轮廓，结构是虚线方块，其他文件是纸张。 -->
+            <symbol id="i-world" viewBox="0 0 24 24">
+                <path d="M12 3 19.8 7.5v9L12 21l-7.8-4.5v-9Z" /><path d="M4.2 7.5 12 12l7.8-4.5M12 12v9" />
+            </symbol>
+            <symbol id="i-structure" viewBox="0 0 24 24">
+                <path d="M12 3 19.8 7.5v9L12 21l-7.8-4.5v-9Z" stroke-dasharray="2.2 2" /><path d="M4.2 7.5 12 12l7.8-4.5M12 12v9" />
+            </symbol>
+            <symbol id="i-file" viewBox="0 0 24 24">
+                <path d="M13.5 3.5h-7A1.5 1.5 0 0 0 5 5v14a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19V9Z" /><path d="M13.5 3.5V9H19" />
+            </symbol>
+            <symbol id="i-outdir" viewBox="0 0 24 24">
+                <path d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4.2l2 2.2H19a1.5 1.5 0 0 1 1.5 1.5v8.3A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5Z" />
+                <path d="M12 10.5V16m-2.5-2.5L12 16l2.5-2.5" />
             </symbol>
         </svg>
         <template id="leading-actions">
@@ -82,10 +94,11 @@
                 aria-label="材质包路径"
                 placeholder="原版，或输入 zip / 目录路径"
             />
-            <div class="row">
-                <button id="texture-browse">选择</button
-                ><button id="texture-apply">应用</button
-                ><button id="texture-reset">恢复原版</button>
+            <div class="button-row">
+                <button id="texture-browse" class="button">
+                    <svg><use href="#i-folder" /></svg>选择…</button
+                ><button id="texture-reset" class="button">恢复原版</button
+                ><button id="texture-apply" class="button primary">应用</button>
             </div>
             <label class="setting"
                 >贴图尺寸上限<select id="texture-size">
@@ -101,20 +114,19 @@
                 原版 · 支持 labPBR 法线与高光贴图
             </p>
         </template>
-        <dialog id="help" class="panel" aria-labelledby="help-title">
-            <form method="dialog" class="help-header">
+        <dialog id="help" class="panel dialog" aria-labelledby="help-title">
+            <form method="dialog" class="dialog-header">
                 <h2 id="help-title">操作帮助</h2>
                 <button
                     class="icon-button"
                     aria-label="关闭帮助"
                     title="关闭帮助"
-                    autofocus
                 >
                     <svg><use href="#i-close" /></svg>
                 </button>
             </form>
             <div
-                class="help-content"
+                class="dialog-body help-content"
                 tabindex="0"
                 role="region"
                 aria-label="操作说明"
@@ -143,7 +155,7 @@
                         HUD
                     </dt>
                     <dd>
-                        收起工具栏和读数，让出观察空间。再点右上角的眼睛即可恢复。
+                        收起工具栏和读数，让出观察空间。右上角只留一只划掉的眼睛，点它即可恢复。
                     </dd>
                     <dt>
                         <svg aria-hidden="true">
@@ -192,7 +204,7 @@
                         >设置
                     </dt>
                     <dd>
-                        调整视距、移动速度和画质。拍照与导出可分别设置屏幕尺寸倍数和超采样网格。
+                        按相机、光照、画面、输出和参数组分页。面板贴在屏幕一侧（竖屏时在底部），打开时收起底栏，可以一边拖动视角一边调整。
                     </dd>
                 </dl>
                 <h3>坐标与存档</h3>
@@ -361,9 +373,9 @@
                 方块的子区块（subchunk）。
             </p>
         </section>
-        <dialog id="link-dialog" class="panel">
-            <form method="dialog" class="picker-title">
-                <h2>连接数据源</h2>
+        <dialog id="link-dialog" class="panel dialog" aria-labelledby="link-title">
+            <form method="dialog" class="dialog-header">
+                <h2 id="link-title">连接数据源</h2>
                 <button
                     id="link-dismiss"
                     class="icon-button"
@@ -373,21 +385,22 @@
                     <svg><use href="#i-close" /></svg>
                 </button>
             </form>
-            <p class="hint">
-                游戏机器人、服务器插件或存档服务提供的 R2Link
-                地址。连接成功后关闭当前存档。
-            </p>
-            <label class="row"
-                >地址<input id="link-url" placeholder="ws://host:port/r2link"
-            /></label>
-            <div class="row bottom">
-                <output id="link-message"></output
-                ><button id="link-start">连接</button>
+            <div class="dialog-body">
+                <label class="field"
+                    >R2Link 地址<input id="link-url" placeholder="ws://host:port/r2link"
+                /></label>
+                <p class="hint">
+                    由游戏机器人、服务器插件或存档服务提供。连接成功后关闭当前存档。
+                </p>
             </div>
+            <footer class="dialog-footer">
+                <output id="link-message"></output
+                ><button id="link-start" class="button primary">连接</button>
+            </footer>
         </dialog>
-        <dialog id="files" class="panel">
-            <form method="dialog" class="picker-title">
-                <h2>打开存档或结构</h2>
+        <dialog id="files" class="panel dialog" aria-labelledby="files-title">
+            <form method="dialog" class="dialog-header">
+                <h2 id="files-title">打开存档或结构</h2>
                 <button
                     id="picker-cancel"
                     class="icon-button"
@@ -397,68 +410,65 @@
                     <svg><use href="#i-close" /></svg>
                 </button>
             </form>
-            <div id="file-drop" hidden>
-                <strong id="file-drop-title"
-                    >将存档目录或文件拖到这里打开</strong
-                >
-                <span>一次一个，松开即打开；可先调整下方打开选项</span>
-            </div>
-            <div class="row">
-                <input
-                    id="directory"
-                    placeholder="存档或目录路径"
-                    aria-label="目录路径"
-                /><button id="browse">浏览</button>
-            </div>
-            <div class="row locations">
-                <button id="parent" title="上级目录">
-                    <svg><use href="#i-parent" /></svg>
-                </button>
-                <div id="roots"></div>
-                <input id="file-search" type="search" aria-label="按名称筛选当前目录" placeholder="按名称筛选" />
-            </div>
-            <div id="file-list"></div>
-            <details id="source-options">
-                <summary>打开选项</summary>
-                <div class="source-fields">
-                    <label class="setting"
-                        >维度<select id="source-dimension"></select
-                    ></label>
-                    <label class="setting"
-                        >Bedrock 邻接修复<input
-                            id="source-fix"
-                            type="checkbox"
-                            checked
-                    /></label>
-                    <label class="setting"
-                        >结构转换内存（MiB）<input
-                            id="source-memory"
-                            type="number"
-                            min="64"
-                            value="512"
-                    /></label>
-                    <label class="setting"
-                        >结构写出并发<input
-                            id="source-workers"
-                            type="number"
-                            min="0"
-                            value="0"
-                    /></label>
+            <div class="dialog-body">
+                <div id="file-drop" hidden>
+                    <strong id="file-drop-title"
+                        >将存档目录或文件拖到这里打开</strong
+                    >
+                    <span>一次一个，松开即打开；可先调整下方打开选项</span>
                 </div>
-                <div class="setting">转换输出目录<output id="structure-root"></output><button type="button" id="reset-structure-root">重置为源文件旁</button></div>
-                <p class="hint">不同来源的同名结构会直接打开已有转换结果，不覆盖。并发填 0 自动选择。</p>
-            </details>
-            <p id="source-hint" class="hint"></p>
-            <div class="row bottom">
-                <output id="file-message"></output
-                ><button id="open-directory">打开当前存档目录</button>
+                <div class="path-row">
+                    <button id="parent" class="button" title="上级目录" aria-label="上级目录">
+                        <svg><use href="#i-parent" /></svg></button
+                    ><input
+                        id="directory"
+                        placeholder="存档或目录路径"
+                        aria-label="目录路径"
+                    /><button id="browse" class="button">前往</button>
+                </div>
+                <div class="locations">
+                    <div id="roots"></div>
+                    <input id="file-search" type="search" aria-label="按名称筛选当前目录" placeholder="筛选" />
+                </div>
+                <div id="file-list"></div>
+                <details id="source-options">
+                    <summary><svg><use href="#i-chevron" /></svg>打开选项</summary>
+                    <div class="source-fields">
+                        <label class="setting"
+                            >维度<select id="source-dimension"></select
+                        ></label>
+                        <label class="setting"
+                            >Bedrock 邻接修复<input
+                                id="source-fix"
+                                class="switch"
+                                type="checkbox"
+                                checked
+                        /></label>
+                        <label class="setting"
+                            >结构转换内存（MiB）<input
+                                id="source-memory"
+                                type="number"
+                                min="64"
+                                value="512"
+                        /></label>
+                        <label class="setting"
+                            >结构写出并发<input
+                                id="source-workers"
+                                type="number"
+                                min="0"
+                                value="0"
+                        /></label>
+                    </div>
+                    <div class="setting structure-root">转换输出目录<output id="structure-root"></output><button type="button" id="reset-structure-root" class="button">重置为源文件旁</button></div>
+                    <p class="hint">不同来源的同名结构会直接打开已有转换结果，不覆盖。并发填 0 自动选择。</p>
+                </details>
+                <p id="source-hint" class="hint"></p>
             </div>
+            <footer class="dialog-footer">
+                <output id="file-message"></output
+                ><button id="open-directory" class="button primary">打开当前存档目录</button>
+            </footer>
         </dialog>
-        <div id="landscape">
-            <strong>仅支持横屏</strong>
-            <p>请旋转设备或加宽窗口</p>
-            <button id="landscape-help">操作帮助</button>
-        </div>
         <script
             type="module"
             src="/r2/common_ui/boot.js"

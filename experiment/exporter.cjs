@@ -97,7 +97,7 @@ async function check(file) {
       document.getElementById("task-status").hidden, nextTier, { timeout: 120000 });
     // 从离线播放器导出参数，再拖回同一个文件，检查镜头更新且世界坐标未被带入。
     await page.click("#settings-open");
-    await page.click("#render-presets summary");
+    await page.click("#tab-presets");
     const download = page.waitForEvent("download");
     await page.click("#preset-export");
     const stream = await (await download).createReadStream();
