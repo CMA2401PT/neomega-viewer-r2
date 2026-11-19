@@ -1,5 +1,5 @@
 // 应用组装存档会话、飞行/地图视图与同一射线帧循环；UI 事件和投影分别放在独立模块。
-import { decodeTextures, createRenderer, ObjectRegistry, enchantingBook, WorldSession, r2linkSource } from "/r2/index.js";
+import { readTextureStream, createRenderer, ObjectRegistry, enchantingBook, WorldSession, r2linkSource } from "/r2/index.js";
 import { exportSnapshot } from "./export.js";
 import type { TextureSet, Renderer, RendererOptions, R2LinkSource } from "/r2/index.js";
 import type { Connection, OpenOptions, Progress, ViewerWorld } from "./types.js";
@@ -294,7 +294,8 @@ async function loadTextures(path: string, maxSize: number) {
     body: JSON.stringify({ path, maxSize }),
   });
   if (!response.ok) throw Error(await response.text());
-  return decodeTextures(await response.arrayBuffer());
+  if (!response.body) throw Error("服务端未返回材质数据");
+  return readTextureStream(response.body);
 }
 /** 旧场景持续显示，贴图和透明度目录准备好后一起切换。 */
 async function applyTextures(path: string) {

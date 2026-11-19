@@ -235,7 +235,7 @@ export function createPicker(openWorld: OpenWorld) {
     document.querySelector<HTMLElement>("#file-drop-title")!.textContent = kind === "pack"
       ? "将材质包 ZIP 或目录拖到这里使用"
       : "将存档目录或文件拖到这里打开";
-    dialog.querySelector("h2")!.textContent = kind === "pack" ? "选择 Java 材质包" : "打开存档或结构";
+    dialog.querySelector("h2")!.textContent = kind === "pack" ? "选择 材质包" : "打开存档或结构";
     document.querySelector<HTMLButtonElement>("#open-directory")!.textContent = kind === "pack" ? "使用材质包" : "打开所选来源";
     document.querySelector<HTMLElement>("#source-hint")!.textContent = kind === "pack"
       ? "选择 zip 或包含 assets 的目录，也可直接输入路径。"

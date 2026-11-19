@@ -114,8 +114,10 @@ func directoryKind(path string, packs bool) string {
 	if !packs {
 		return worldinput.DirectoryKind(path)
 	}
-	if assets, err := os.Stat(filepath.Join(path, "assets")); err == nil && assets.IsDir() {
-		return "texture"
+	for _, sub := range []string{"assets", "textures/blocks"} {
+		if info, err := os.Stat(filepath.Join(path, sub)); err == nil && info.IsDir() {
+			return "texture"
+		}
 	}
 	return "folder"
 }
