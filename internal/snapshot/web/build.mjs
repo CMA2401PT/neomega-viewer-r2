@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
+import { defaultAssets } from "../../../../../neomega-r2/r2/scripts/default-assets.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const core = fileURLToPath(new URL("../../../../../neomega-r2/r2/", import.meta.url));
@@ -22,11 +23,11 @@ async function bundle(entry, format = "esm") {
   return result.outputFiles[0].text;
 }
 
-const assets = join(core, "../assets-utils/assets");
 const resources = {};
-for (const file of readdirSync(assets)) {
+for (const entry of defaultAssets.getEntries()) {
+  const file = entry.name;
   if ((!file.startsWith("base-") && file.endsWith(".bin")) || ["catalog.json", "textures-info.json"].includes(file)) {
-    resources[file] = gzipSync(readFileSync(join(assets, file))).toString("base64");
+    resources[file] = gzipSync(entry.getData()).toString("base64");
   }
 }
 for (const file of readdirSync(join(dist,"render")).filter(name => name.endsWith(".wgsl") || name.endsWith(".frag"))) {

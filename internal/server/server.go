@@ -229,9 +229,8 @@ func queryInt(r *http.Request, name string) (int, error) {
 // Handler 让内置场景与文件来源使用相同接口，并提供公共渲染资源。
 func (s *Server) Handler(web fs.FS) http.Handler {
 	mux := http.NewServeMux()
-	assets, _ := fs.Sub(r2assets.Files, "assets")
 	core, _ := fs.Sub(r2.Files, "dist")
-	mux.Handle("/r2/assets/", http.StripPrefix("/r2/assets/", http.FileServerFS(assets)))
+	mux.Handle("/r2/assets/", http.StripPrefix("/r2/assets/", assetHandler()))
 	mux.Handle("/r2/", http.StripPrefix("/r2/", http.FileServerFS(core)))
 	mux.HandleFunc("GET /api/export/template", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -294,8 +293,7 @@ func (s *Server) Handler(web fs.FS) http.Handler {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		w.Header().Set("Content-Type", "application/octet-stream")
-		textures.WriteTo(w)
+		writeTextureSet(w, r, textures)
 	})
 	mux.HandleFunc("GET /r2link", s.link)
 	mux.Handle("/", http.FileServerFS(web))
