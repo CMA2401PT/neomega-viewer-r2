@@ -96,6 +96,7 @@ async function start() {
       camera.position = [...world.camera.position];
       camera.yaw = world.camera.yaw;
       camera.pitch = world.camera.pitch;
+      camera.ortho = world.camera.ortho;
     } else if (dimension.frame) {
       const { min, max } = dimension.frame;
       const center = min.map((lo, i) => (lo + max[i]) / 2);

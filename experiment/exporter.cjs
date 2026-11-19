@@ -95,6 +95,25 @@ async function check(file) {
     await page.locator(`[data-tier="${nextTier}"]`).click();
     await page.waitForFunction(next => window.compiledTiers.includes(next) &&
       document.getElementById("task-status").hidden, nextTier, { timeout: 120000 });
+    // 从离线播放器导出参数，再拖回同一个文件，检查镜头更新且世界坐标未被带入。
+    await page.click("#settings-open");
+    await page.click("#render-presets summary");
+    const download = page.waitForEvent("download");
+    await page.click("#preset-export");
+    const stream = await (await download).createReadStream();
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    const group = JSON.parse(Buffer.concat(chunks));
+    assert.equal(group.camera.position, undefined);
+    const coordinates = await page.locator("#teleport input").evaluateAll(inputs => inputs.map(input => input.value));
+    group.settings.appearance.fov = group.settings.appearance.fov === 73 ? 81 : 73;
+    await page.evaluate(group => {
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([JSON.stringify(group)], "镜头.json", { type: "application/json" }));
+      document.getElementById("view").dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer: transfer }));
+    }, group);
+    await page.waitForFunction(fov => Number(document.getElementById("fov").value) === fov, group.settings.appearance.fov);
+    assert.deepEqual(await page.locator("#teleport input").evaluateAll(inputs => inputs.map(input => input.value)), coordinates);
     assert.deepEqual(errors, []);
     assert.deepEqual(requests, []);
     console.log("通过：本地文件离线加载，使用快照的镜头、布光和预览档");
