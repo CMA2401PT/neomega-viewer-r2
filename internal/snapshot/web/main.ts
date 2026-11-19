@@ -1,4 +1,4 @@
-import { createRenderer, ObjectRegistry, WorldSession, type DataSource, type WorldSink } from "/r2/index.js";
+import { createRenderer, ObjectRegistry, WorldSession, type Camera, type DataSource, type WorldSink } from "/r2/index.js";
 import { createView, type ViewSettings } from "/r2/common_ui/view.js";
 import { element } from "/r2/common_ui/hud.js";
 import { mountRenderDebug } from "/r2/common_ui/render-debug.js";
@@ -10,7 +10,15 @@ interface Dimension {
   // 开场取景的方块包围盒，大存档取出生点附近有内容的区域。
   frame?: { min: number[]; max: number[] };
 }
-interface ExportedWorld { version: number; name: string; camera?: { position: number[]; yaw: number; pitch: number }; ocean?: number; dimensions: Dimension[] }
+interface ExportedWorld {
+  version: number;
+  name: string;
+  camera?: Camera;
+  /** Viewer 导出时保存的显示设置；命令行导出的建筑使用播放器默认取景和画质。 */
+  settings?: Partial<ViewSettings>;
+  ocean?: number;
+  dimensions: Dimension[];
+}
 
 function unpack(base64: string): Response {
   const binary = atob(base64), bytes = new Uint8Array(binary.length);
@@ -47,6 +55,7 @@ async function start() {
     tier: "basic", stillAccumulation: false, nearRadius: 1, farRadius: 32,
     speed: 32, resolution: "native", photoScale: 2, photoSupersample: 1,
     exportScale: 2, exportSupersample: 4, fog: true, time: 10, timeFlow: false,
+    ...world.settings,
   };
   document.title = world.name + " · R2 建筑预览";
   element("building-name").textContent = world.name;
@@ -59,7 +68,7 @@ async function start() {
     },
     onProgress: ({ label }) => startupStage(label),
   });
-  const camera = { position: [0, 0, 0], yaw: -Math.PI / 4, pitch: -Math.PI / 6 };
+  const camera: Camera = { position: [0, 0, 0], yaw: -Math.PI / 4, pitch: -Math.PI / 6 };
   const { status, drawOptions } = mountRenderDebug(element("render-debug"));
   const near = element<HTMLInputElement>("near-radius");
   near.disabled = true;

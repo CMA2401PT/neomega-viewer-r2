@@ -173,9 +173,12 @@ exportButton.onclick = async () => {
   exportStatus.textContent = "正在导出…";
   const name = world.name;
   try {
+    // 点击时拍下整个视图；材质已经内嵌，播放器无需本机的文件路径。
+    const { texturePath, textureSize, ...viewSettings } = settings;
     const file = await exportSnapshot({
       sourceURL: source.url, name, dimension: world.dimension ?? ".", ocean: world.scene?.ocean,
-      camera: { ...camera, position: [...camera.position] }, states: renderer.states, textures: activeTextures,
+      camera: structuredClone(camera), settings: structuredClone(viewSettings),
+      states: renderer.states, textures: activeTextures,
     }, exporting.signal, count => { exportStatus.textContent = `已导出 ${count} 个区域`; });
     const url = URL.createObjectURL(file);
     const link = document.createElement("a");

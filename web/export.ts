@@ -1,10 +1,12 @@
 import { decodeRegion, r2linkSource, type Camera, type RegionCoord, type TextureSet } from "/r2/index.js";
+import type { ViewSettings } from "/r2/common_ui/view.js";
 
 interface Snapshot {
   sourceURL: string;
   name: string;
   dimension: string;
   camera: Camera;
+  settings: ViewSettings;
   ocean?: number;
   states: Uint32Array;
   textures?: TextureSet;
@@ -120,7 +122,7 @@ export async function exportSnapshot(input: Snapshot, signal: AbortSignal, progr
     if (!written) throw Error("当前维度没有可导出的静态方块，或数据源未提供区块占用表");
     parts.push('<script type="application/octet-stream" id="r2-chunks-0">', await compressed(await new Blob(maps).arrayBuffer()), '</script>\n');
     parts.push('<script type="application/json" id="r2-world">', jsonScript({
-      version: 1, name: input.name, camera: input.camera, ocean: input.ocean,
+      version: 1, name: input.name, camera: input.camera, settings: input.settings, ocean: input.ocean,
       dimensions: [{ key: 0, id: input.dimension }],
     }), '</script>\n', after);
     await Promise.race([stopped, Promise.resolve()]);
