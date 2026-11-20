@@ -4,6 +4,9 @@
 #   make build && ./dist/neOmega-R2 -listen 127.0.0.1:2412
 # make build 使用工作区里的源码构建网页、离线播放器和可执行文件。启动后打开 http://127.0.0.1:2412。
 #
+# 本地一次编译并打包四个平台，产物位于 dist/local/
+#   make build-all
+#
 # 用本地提交触发 GitHub Actions 发布
 # 先提交要发布的 Viewer 改动。发布工作流和 release-deps.lock 都随这个提交一起检出。
 #   git fetch origin --tags
@@ -26,7 +29,7 @@ VERSION ?=
 export VERSION
 export VIEWER_TAG := $(shell git describe --tags --exact-match --match 'v[0-9]*' HEAD 2>/dev/null)
 
-.PHONY: build web test deps update-deps version tag release
+.PHONY: build build-all web test deps update-deps version tag release
 
 build: web
 	mkdir -p dist
@@ -89,9 +92,14 @@ tag:
 	git tag -a "$$version" -m "$(NAME) $$version"; \
 	printf '%s\n' "$$version"
 
-release: web
+# 本机开发包与发布包共用平台列表和构建参数，各自写入独立目录。
+build-all: PACKAGE_DIR := dist/local
+build-all: export PACKAGE_VERSION = $(or $(VERSION),dev)
+release: PACKAGE_DIR := dist/release
+release: export PACKAGE_VERSION = $(or $(VERSION),$(VIEWER_TAG))
+build-all release: web
 	@set -eu; \
-	version="$${VERSION:-$$VIEWER_TAG}"; \
+	version="$$PACKAGE_VERSION"; \
 	if [ -z "$$version" ]; then \
 		printf '请在版本标签上构建，或通过 VERSION 指定发布版本。\n' >&2; \
 		exit 1; \
@@ -117,5 +125,5 @@ release: web
 			tar -C "$$scratch" -czf "$$archive.tar.gz" "$$binary"; \
 		fi; \
 	done; \
-	mkdir -p dist/release; \
-	mv "$$scratch"/packages/* dist/release/
+	mkdir -p "$(PACKAGE_DIR)"; \
+	mv "$$scratch"/packages/* "$(PACKAGE_DIR)/"
