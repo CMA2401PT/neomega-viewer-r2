@@ -122,7 +122,7 @@ build-all release: web
 		if [ "$$os" = windows ]; then \
 			(cd "$$scratch" && zip -q "$$archive.zip" "$$binary"); \
 		else \
-			tar -C "$$scratch" -czf "$$archive.tar.gz" "$$binary"; \
+			COPYFILE_DISABLE=1 tar -C "$$scratch" -czf "$$archive.tar.gz" "$$binary"; \
 		fi; \
 	done; \
 	mkdir -p "$(PACKAGE_DIR)"; \
