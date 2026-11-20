@@ -1,7 +1,6 @@
 import { createRenderer, ObjectRegistry, WorldSession, type Camera, type DataSource, type WorldSink } from "/r2/index.js";
 import { createView, type ViewSettings } from "/r2/common_ui/view.js";
 import { element } from "/r2/common_ui/hud.js";
-import { mountRenderDebug } from "/r2/common_ui/render-debug.js";
 import { startupStage, failStartup } from "/r2/common_ui/startup.js";
 
 interface Dimension {
@@ -69,7 +68,6 @@ async function start() {
     onProgress: ({ label }) => startupStage(label),
   });
   const camera: Camera = { position: [0, 0, 0], yaw: -Math.PI / 4, pitch: -Math.PI / 6 };
-  const { status, drawOptions } = mountRenderDebug(element("render-debug"));
   const near = element<HTMLInputElement>("near-radius");
   near.disabled = true;
   near.title = "建筑快照只包含静态方块";
@@ -80,6 +78,7 @@ async function start() {
       if (status.checkVisibility()) status.textContent = `${stats.sections} 个子区块 · ${stats.loaded}/${stats.wanted} 个 r2region · GPU ${median?.toFixed(2) ?? "…"} ms`;
     },
   });
+  const status = view.debugStatus;
   const workerURL = URL.createObjectURL(new Blob([element("r2-worker").textContent], { type: "text/javascript" }));
   const sets = new Map<number, Map<string, string>>();
   for (const tag of document.querySelectorAll<HTMLScriptElement>("script[data-r2-region]")) {
@@ -119,7 +118,7 @@ async function start() {
   await startupStage("正在准备建筑…");
   openDimension(world.dimensions[0]);
   function frame(now: number) {
-    view.frame(now, session, { drawOptions: drawOptions() });
+    view.frame(now, session);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

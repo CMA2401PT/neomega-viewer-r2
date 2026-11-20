@@ -343,6 +343,9 @@ element<HTMLSelectElement>("texture-size").onchange = () =>
   );
 
 function showDetails({ stats, shownTier, median, width, height }: ViewStats) {
+  if (view.debugStatus.checkVisibility()) {
+    view.debugStatus.textContent = `已加载 ${stats.loaded}/${stats.wanted} 个区域 · GPU 中位耗时 ${median?.toFixed(2) ?? "…"} ms`;
+  }
   const clipped = source?.clippedSections ?? 0;
   element("height-diagnostics").hidden = clipped === 0;
   element("height-diagnostics").textContent = `有 ${clipped} 个子区块（subchunk）超出可显示高度（Y -64～447，按已收到的 r2region 统计）`;

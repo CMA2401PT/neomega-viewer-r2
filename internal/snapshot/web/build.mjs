@@ -35,7 +35,7 @@ for (const file of readdirSync(join(dist,"render")).filter(name => name.endsWith
 }
 const shared = name => readFileSync(join(dist, "common_ui", name), "utf8");
 const actions = '<span id="building-name"></span><select id="export-dimension" aria-label="维度" hidden></select>';
-const layout = shared("layout.html").replace('<slot name="leading-actions"></slot>', "").replace('<slot name="actions"></slot>', actions).replace('<slot name="settings-extra"></slot>', '<div id="render-debug"></div>');
+const layout = shared("layout.html").replace('<slot name="leading-actions"></slot>', "").replace('<slot name="actions"></slot>', actions).replace('<slot name="settings-extra"></slot>', "");
 const [main, worker] = await Promise.all([bundle(join(here, "main.ts")), bundle(join(dist, "scene/worker.js"), "iife")]);
 const player = `<style>${shared("style.css")}
 #building-name { max-width: 24ch; overflow: hidden; text-overflow: ellipsis; }
