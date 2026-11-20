@@ -52,8 +52,14 @@ jobs:
       - name: Publish packages to the tagged GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG_MOVED: ${{ github.event.forced }}
         run: |
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # 将已有标签移到修复提交时，用本次构建替换同名下载包。
+            if [[ "$TAG_MOVED" == "true" ]]; then
+              gh release upload "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" --clobber
+              exit 0
+            fi
             assets=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
             for file in release/*; do
               if ! grep -Fxq "${file##*/}" <<<"$assets"; then
