@@ -27,6 +27,11 @@ export function createPicker(openWorld: OpenWorld) {
   const destination = document.querySelector<HTMLOutputElement>("#structure-root")!;
   const resetRoot = document.querySelector<HTMLButtonElement>("#reset-structure-root")!;
   const rootKey = "neomega-r2-structure-root";
+  function showPath(path: string): void {
+    // 长路径优先显示末尾，让窄屏也能看清当前目录；手动输入时保留用户的滚动位置。
+    input.value = path;
+    input.scrollLeft = input.scrollWidth;
+  }
   function showRoot(path: string) {
     destination.value = path || "源文件旁";
     resetRoot.disabled = !path;
@@ -96,7 +101,7 @@ export function createPicker(openWorld: OpenWorld) {
       if (!response.ok) throw Error(await response.text());
       listing = await response.json();
       selected = listing.selected;
-      input.value = selected || listing.path;
+      showPath(selected || listing.path);
       setDimensions(["bedrock", "mcstructure", "mcworld"].includes(listing.kind)
         ? ["0", "1", "2"]
         : input.value === currentWorld.path ? currentWorld.dimensions : [""]);
@@ -118,15 +123,20 @@ export function createPicker(openWorld: OpenWorld) {
         const row = document.createElement("button");
         row.className = "file";
         row.setAttribute("aria-selected", String(entry.path === selected));
-        const name = document.createElement("span"), label = document.createElement("span");
+        const name = document.createElement("span");
         name.textContent = entry.name;
-        label.className = "kind";
-        label.textContent = labels[entry.kind] || entry.kind;
         name.className = "name";
-        row.append(icon(icons[entry.kind] ?? "i-file"), name, label);
+        row.append(icon(icons[entry.kind] ?? "i-file"), name);
+        if (entry.kind !== "folder") {
+          const label: HTMLSpanElement = document.createElement("span");
+          label.className = "kind";
+          label.textContent = labels[entry.kind] || entry.kind;
+          row.append(label);
+        }
         row.onclick = () => {
           if (!entry.openable) return browse(entry.path);
-          selected = input.value = entry.path;
+          selected = entry.path;
+          showPath(entry.path);
           for (const other of list.querySelectorAll(".file")) other.setAttribute("aria-selected", String(other === row));
           const sourceKind = entry.kind === "level" ? listing.kind : entry.kind;
           setDimensions(["bedrock", "mcstructure", "mcworld"].includes(sourceKind)

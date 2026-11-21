@@ -353,8 +353,8 @@ function showDetails({ stats, shownTier, median, width, height }: ViewStats) {
     ["来源", world.kind || "内置场景"],
     ["预览渲染器", TIER_NAMES[shownTier]],
     ...(world.reusedStructure ? [["结构输出", "复用已有存档"]] as const : []),
-    ["近景半径", `${settings.nearRadius} 区块（chunk）`],
-    ["远景半径", `${settings.farRadius} 区块（chunk）`],
+    ["近景半径", `${settings.nearRadius} 区块 (chunk)`],
+    ["远景半径", `${settings.farRadius} 区块 (chunk)`],
     [
       "窗口覆盖",
       `${settings.farRadius * 32}×${settings.farRadius * 32}×512 方块`,

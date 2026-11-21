@@ -13,6 +13,14 @@
   max-width: 210px;
   height: 34px;
 }
+/* 将共用的向右箭头转为下拉提示，避免随场景名一起收缩。 */
+#world-name svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--muted);
+  transform: rotate(90deg);
+}
 #world-label {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -367,6 +375,7 @@
 .help-icons dd {
   margin: 0;
   color: #394747;
+  text-wrap: pretty;
 }
 .help-about a {
   color: #096562;
