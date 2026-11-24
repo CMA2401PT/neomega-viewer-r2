@@ -6,6 +6,7 @@ const { chromium } = require(
 const fs = require("node:fs");
 const assert = require("node:assert/strict");
 const base = process.env.R2_URL || "http://127.0.0.1:2413";
+const fixture = process.env.R2_FIXTURE || "/tmp/neomega-r2-java-fixture";
 const out = process.env.R2_OUTPUT || "/tmp/r2ui";
 fs.mkdirSync(out + "/shots", { recursive: true });
 
@@ -92,18 +93,16 @@ fs.mkdirSync(out + "/shots", { recursive: true });
             s.tier,
             s.timeFlow,
             s.resolution,
-            s.photoSamples,
+            s.photoSupersample, s.exportSupersample, s.superResolution,
           ];
         }),
-        [2, 32, "shading", true, "native", 32],
+        [2, 32, "shading", true, "native", 1, 1, "off"],
       );
-      // 固定时间保留可重复的照片，同时验证关闭动态时间后会进入累积。
-      await page.click("#time-flow");
-      await change("time", 10);
+      // 开启静止累积会暂停昼夜，照片和地图拾取由此使用固定光照。
+      await page.click("#still-accumulation");
+      await page.locator("#time").evaluate(el => { el.value = "10"; el.dispatchEvent(new Event("input")); });
       if (width === 1280) {
-        await page.evaluate(() =>
-          viewerR2.openWorld("/tmp/neomega-r2-java-fixture"),
-        );
+        await page.evaluate(path => viewerR2.openWorld(path), fixture);
         await settled();
         const picks = await page.evaluate(async () => {
           const r = viewerR2.renderer,
@@ -130,7 +129,7 @@ fs.mkdirSync(out + "/shots", { recursive: true });
             ortho,
             perspective,
             miss,
-            accumulationPreserved: before === r.accumulated,
+            accumulationPreserved: r.accumulated >= before,
             error: viewerR2.state.error,
           };
         });
@@ -142,10 +141,12 @@ fs.mkdirSync(out + "/shots", { recursive: true });
         assert.equal(picks.error, 0);
         assert(picks.accumulationPreserved);
         result.checks.push({ picks });
-        await change("resolution", "0.5");
-        await change("photo-samples", 4);
+        await change("resolution", "native-0.5");
+        await change("photo-scale", 1);
         const downloadEvent = page.waitForEvent("download");
         await page.click("#photo");
+        await page.waitForFunction(() => parseInt(document.querySelector("#photo-progress").textContent) >= 1, null, {timeout: 90000});
+        await page.getByRole("button", {name: "保存照片", exact: true}).click();
         const download = await downloadEvent;
         await download.saveAs(out + "/fixture-photo.png");
         await page.waitForFunction(
@@ -158,27 +159,25 @@ fs.mkdirSync(out + "/shots", { recursive: true });
             .toString(),
           "PNG",
         );
-        await change("photo-samples", 32);
         await page.click("#photo");
-        await page.click("#photo");
+        await page.keyboard.press("Escape");
         assert(await page.locator("#photo-progress").isHidden());
         await change("resolution", "native");
         result.checks.push({ photoDownload: true, photoCancel: true });
       }
-      await page.evaluate(
-        (path) => viewerR2.openWorld(path),
-        process.env.R2_WORLD || "/Users/dai/Downloads/新天堂",
-      );
+      // 已知测试存档在 (10,2,8) 有石英砖，两种视口都能稳定复现地图拾取。
+      const screenshotWorld = process.env.R2_WORLD || fixture;
+      if (width !== 1280 || screenshotWorld !== fixture) await page.evaluate(path => viewerR2.openWorld(path), screenshotWorld);
       await settled();
-      await page.evaluate(() =>
-        viewerR2.setCamera([1280, 271, 1280], [1120, 185, 1080]),
-      );
+      const resetCamera = () => page.evaluate(() => viewerR2.setCamera([10.5, 5, 8.5], [10.5, 2, 7]));
+      if (screenshotWorld === fixture) await resetCamera();
+      else await page.evaluate(() => viewerR2.setCamera([1280, 271, 1280], [1120, 185, 1080]));
       await page.waitForTimeout(1500);
       await shot("world");
       await page.click("#settings-open");
       await page.waitForTimeout(100);
       await shot("settings");
-      await page.click("#settings-open");
+      await page.click("#settings-close");
       await page.click("#world-name");
       await page.waitForTimeout(100);
       await shot("info");
@@ -186,12 +185,19 @@ fs.mkdirSync(out + "/shots", { recursive: true });
       await shot("hidden-hud");
       assert.equal(await page.locator("#hud").isVisible(), false);
       await page.click("#eye");
+      if (screenshotWorld !== fixture) {
+        await page.evaluate(path => viewerR2.openWorld(path), fixture);
+        await settled();
+        await resetCamera();
+      }
       const main = await page.evaluate(() => viewerR2.state.camera);
+      const chunkRequests = count(frames.sent, "chunks");
+      assert(chunkRequests > 0, "未通过 R2Link 请求区块占用图");
       await page.click("#map-open");
       await settled();
       await page.waitForTimeout(1000);
-      await page.mouse.click(width / 2 + 100, height / 2 + 30);
-      await page.waitForTimeout(200);
+      await page.mouse.click(width / 2, height / 2);
+      await page.waitForFunction(() => viewerR2.state.map.selection);
       assert(
         await page.evaluate(() => viewerR2.state.map.selection),
         "地图未拾取到方块",
@@ -204,21 +210,27 @@ fs.mkdirSync(out + "/shots", { recursive: true });
         map: await page.evaluate(() => viewerR2.state.map),
       });
       if (width === 1280) {
+        // 主相机和地图先移开，让石英砖所在的区域退出窗口，再点击尚未加载的旧位置。
+        await page.evaluate(() => {
+          viewerR2.setCamera([2048, 5, 8.5], [2048, 2, 7]);
+          viewerR2.map.center = [2048, 5, 8.5];
+        });
+        await settled();
         const pending = await page.evaluate(() => {
-          viewerR2.map.center = [2048, 271, 1280];
+          viewerR2.map.center = [10.5, 3, 8.5];
           viewerR2.map.choose({ x: innerWidth / 2, y: innerHeight / 2 });
           return viewerR2.state.map.pending;
         });
         assert(pending, "未加载区域未登记拾取重试");
         await settled();
-        await page.waitForFunction(() => !viewerR2.state.map.pending);
+        await page.waitForFunction(() => !viewerR2.state.map.pending && viewerR2.state.map.selection);
         assert(
           await page.evaluate(() => viewerR2.state.map.selection),
           "发布后没有重新拾取",
         );
         assert.deepEqual(
           await page.evaluate(() => viewerR2.session.center),
-          main.position.map((v) => Math.floor(v / 16)),
+          [128, 0, 0],
         );
         const selection = await page.evaluate(
           () => viewerR2.state.map.selection,
@@ -234,9 +246,7 @@ fs.mkdirSync(out + "/shots", { recursive: true });
           nearCenterRetained: true,
           mapJump: true,
         });
-        await page.evaluate(() =>
-          viewerR2.setCamera([1280, 271, 1280], [1120, 185, 1080]),
-        );
+        await resetCamera();
         await page.click("#map-open");
         await settled();
       }
@@ -266,10 +276,7 @@ fs.mkdirSync(out + "/shots", { recursive: true });
       await shot("map-chunks");
       assert(await page.evaluate(() => viewerR2.state.map.overview));
       assert((await page.evaluate(() => viewerR2.state.map.tiles)) > 0);
-      assert.equal(
-        count(frames.sent, "chunks"),
-        width === 1280 ? 3 : 2,
-      );
+      assert.equal(count(frames.sent, "chunks"), chunkRequests, "同一场景缩放应复用区块占用图");
       await page.mouse.click(width / 2, height / 2);
       await page.waitForTimeout(150);
       assert.equal(

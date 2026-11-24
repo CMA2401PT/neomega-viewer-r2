@@ -23,6 +23,14 @@ node --test neomega-r2/r2/tests/*.mjs
 
 `R2_URL` 替换服务地址，`R2_FIXTURE` 替换验证存档，`R2_OUTPUT` 替换输出目录。浏览器工具路径可用 `PLAYWRIGHT_MODULE` 和 `CHROME` 指定。默认结果写入 `/tmp/r2-static-models`。
 
+### 共享界面验收
+
+`ui.cjs` 检查两个视口的面板、相机拾取、拍照保存与放弃，以及地图在区域到达后重试选点。可复用上面的测试存档和服务。设置 `R2_WORLD` 可以另选“world”截图使用的存档，拾取断言仍使用已知测试方块。
+
+```sh
+R2_URL=http://127.0.0.1:2416 R2_FIXTURE=/tmp/neomega-r2-static-fixture node apps/neomega-viewer-r2/experiment/ui.cjs
+```
+
 ## 存档来源验收
 
 `sources.cjs` 用真实 Java、Bedrock、Java 结构和 mcstructure 验证打开面板、选项传递、转换进度、输出复用及实际绘制。结构和 Bedrock 样本复制到输出目录下的独立临时目录，转换产物与副本放在一起。脚本记录输入路径、请求响应、渲染状态和截图，默认输出到 `/tmp/r2link/sources/`。

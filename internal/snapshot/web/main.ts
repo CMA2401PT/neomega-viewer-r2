@@ -53,7 +53,7 @@ async function start() {
   const settings: ViewSettings = {
     tier: "basic", stillAccumulation: false, nearRadius: 1, farRadius: 32,
     speed: 32, resolution: "native", photoScale: 2, photoSupersample: 1,
-    exportScale: 2, exportSupersample: 4, fog: true, time: 10, timeFlow: false,
+    exportScale: 2, exportSupersample: 1, fog: true, time: 10, timeFlow: false,
     ...world.settings,
   };
   document.title = world.name + " · R2 建筑预览";
