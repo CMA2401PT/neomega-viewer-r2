@@ -1,5 +1,7 @@
 // 应用组装存档会话、飞行/地图视图与同一射线帧循环；UI 事件和投影分别放在独立模块。
-import { readTextureStream, createRenderer, ObjectRegistry, enchantingBook, WorldSession, r2linkSource } from "/r2/index.js";
+import { createRenderer, ObjectRegistry, enchantingBook, WorldSession, r2linkSource } from "/r2/index.js";
+import { loadMaterial, saveMaterial } from "./material-preference.js";
+import { materialControls } from "/r2/common_ui/material-controls.js";
 import { exportSnapshot } from "./export.js";
 import type { TextureSet, Renderer, RendererOptions, R2LinkSource } from "/r2/index.js";
 import type { Connection, OpenOptions, Progress, ViewerWorld } from "./types.js";
@@ -25,8 +27,8 @@ const canvas = element<HTMLCanvasElement>("view");
 const camera = { position: [0, 80, 0], yaw: -0.7, pitch: -0.32 };
 const savedSettings = { ...JSON.parse(localStorage.getItem("neomega-r2-settings") || "{}") };
 // 清除旧版的样本上限和阴影开关。
-for (const key of ["stillSamples", "photoSamples", "shadows"]) delete savedSettings[key];
-const settings: ViewSettings & { texturePath: string; textureSize: number } = {
+for (const key of ["stillSamples", "photoSamples", "shadows", "texturePath"]) delete savedSettings[key];
+const settings: ViewSettings & { textureSize: number } = {
   nearRadius: 2,
   farRadius: 32,
   resolution: "1.5",
@@ -38,7 +40,6 @@ const settings: ViewSettings & { texturePath: string; textureSize: number } = {
   stillAccumulation: false,
   photoScale: 2, photoSupersample: 1,
   exportScale: 2, exportSupersample: 4,
-  texturePath: "",
   textureSize: 128,
   ...savedSettings,
 };
@@ -172,7 +173,7 @@ exportButton.onclick = async () => {
   const name = world.name;
   try {
     // 点击时拍下整个视图；材质已经内嵌，播放器无需本机的文件路径。
-    const { texturePath, textureSize, ...viewSettings } = settings;
+    const { textureSize, ...viewSettings } = settings;
     const file = await exportSnapshot({
       sourceURL: source.url, name, dimension: world.dimension ?? ".", ocean: world.scene?.ocean,
       camera: structuredClone(camera), settings: structuredClone(viewSettings),
@@ -287,60 +288,23 @@ element<HTMLButtonElement>("close-world").onclick = async () => {
   if (!response.ok) return hud.error(await response.text());
   await useWorld(await response.json());
 };
-/** 核心负责材质包合成，应用只传入路径与尺寸上限。 */
-async function loadTextures(path: string, maxSize: number) {
-  const response = await fetch("/api/textures", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path, maxSize }),
-  });
-  if (!response.ok) throw Error(await response.text());
-  if (!response.body) throw Error("服务端未返回材质数据");
-  return readTextureStream(response.body);
-}
-/** 旧场景持续显示，贴图和透明度目录准备好后一起切换。 */
-async function applyTextures(path: string) {
-  const buttons = [
-    "texture-browse",
-    "texture-apply",
-    "texture-reset",
-    "texture-size",
-  ];
-  for (const id of buttons) element<HTMLButtonElement | HTMLSelectElement>(id).disabled = true;
-  element("texture-status").textContent = "正在合成贴图与透明度数据…";
-  const maxSize = Number(element<HTMLSelectElement>("texture-size").value);
-  try {
-    const set = await loadTextures(path, maxSize);
+// 文件留在浏览器内。导出 HTML 使用已经安装的同一套模型和贴图。
+let savedMaterial = await loadMaterial().catch(() => null);
+const materials = materialControls(element("material-controls"), async (set, input, limit) => {
+  const applied = worldQueue.then(async () => {
     if (session) await session.setTextures(set);
     else renderer.setTextures(set);
     activeTextures = set;
-    settings.texturePath = path;
-    settings.textureSize = maxSize;
-    element<HTMLInputElement>("texture-path").value = path;
-    element("texture-status").textContent =
-      `${path ? "材质包" : "原版"} · ${set.info.side}×${set.info.side} · ${set.info.levels} 级 mip`;
-    view.refreshSettings();
-  } catch (error) {
-    element("texture-status").textContent = String(error);
-    throw error;
-  } finally {
-    for (const id of buttons) element<HTMLButtonElement | HTMLSelectElement>(id).disabled = false;
+  });
+  worldQueue = applied.catch(() => {});
+  await applied;
+  settings.textureSize = limit;
+  if (input !== savedMaterial) {
+    await saveMaterial(input).catch(error => hud.error("材质已应用，但无法记住选择：" + error));
+    savedMaterial = input;
   }
-}
-element<HTMLInputElement>("texture-path").value = settings.texturePath;
-element<HTMLSelectElement>("texture-size").value = String(settings.textureSize);
-element<HTMLButtonElement>("texture-browse").onclick = () =>
-  picker({ kind: "pack", choose: applyTextures });
-element<HTMLButtonElement>("texture-apply").onclick = () =>
-  applyTextures(element<HTMLInputElement>("texture-path").value).catch((error) =>
-    hud.error(String(error)),
-  );
-element<HTMLButtonElement>("texture-reset").onclick = () =>
-  applyTextures("").catch((error) => hud.error(String(error)));
-element<HTMLSelectElement>("texture-size").onchange = () =>
-  applyTextures(settings.texturePath).catch((error) =>
-    hud.error(String(error)),
-  );
+  view.refreshSettings();
+}, settings.textureSize);
 
 function showDetails({ stats, shownTier, median, width, height }: ViewStats) {
   if (view.debugStatus.checkVisibility()) {
@@ -377,11 +341,8 @@ function frame(now: number) {
   view.frame(now, session, { continuous });
 }
 
-if (settings.texturePath || settings.textureSize !== 128) {
-  await startupStage("正在加载自定义材质…");
-  await applyTextures(settings.texturePath).catch((error) =>
-    hud.error(String(error)),
-  );
+if (savedMaterial || settings.textureSize !== 128) {
+  await materials.apply(savedMaterial, settings.textureSize).catch(error => hud.error(String(error)));
 }
 await startupStage("正在读取场景信息…");
 // Electron 页面使用固定来源，WebSocket 直连宿主本次启动的回环端口。
@@ -391,6 +352,7 @@ const localServiceURL = location.protocol === "r2:"
 await useWorld(await (await fetch("/api/world")).json());
 await startupStage("正在加载场景，准备第一帧…");
 window.addEventListener("pagehide", () => {
+  materials.dispose();
   view.dispose();
   session?.dispose();
   renderer.dispose();
@@ -430,7 +392,7 @@ const viewerR2 = {
   },
   openWorld,
   connectSource,
-  applyTextures,
+  applyTextures: materials.apply,
   close: () => element<HTMLButtonElement>("close-world").click(),
   get renderer() {
     return renderer;

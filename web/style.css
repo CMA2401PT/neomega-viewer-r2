@@ -60,15 +60,6 @@
   }
 }
 
-#texture-path {
-  width: 100%;
-  margin-top: 6px;
-  font: 12px var(--mono);
-}
-#texture-apply {
-  margin-left: auto;
-}
-
 #info {
   width: min(400px, calc(100vw - 16px));
 }

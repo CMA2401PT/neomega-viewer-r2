@@ -22,7 +22,7 @@ async function check(file) {
       // 在真正点击的同一事件中对照设置，时间流逝或导出期间的改动不应改变快照。
       await live.evaluate(() => document.getElementById("export-html").addEventListener("click", () => {
         const { camera, settings, world } = viewerR2.state;
-        const { texturePath, textureSize, ...display } = settings;
+        const { textureSize, ...display } = settings;
         window.expectedSnapshot = structuredClone({ camera, settings: display, dimension: world.dimension ?? "." });
       }, { capture: true, once: true }));
       const download = live.waitForEvent("download");

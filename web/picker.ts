@@ -1,10 +1,9 @@
-// 存档与材质包共用服务端目录浏览器；Electron 也可提交用户拖入的本机路径。
+// 存档从服务端目录浏览器选择；Electron 也可提交用户拖入的本机路径。
 import { dimensionName, type OpenWorld, type Progress, type ViewerWorld } from "./types.js";
 
-type Kind = "world" | "pack";
 interface Entry { name: string; path: string; kind: string; directory: boolean; openable: boolean }
 interface Listing { path: string; parent: string; selected: string; kind: string; roots: Entry[]; entries: Entry[] }
-interface PickerOptions { kind?: Kind; choose?: OpenWorld; world?: Partial<ViewerWorld> }
+interface PickerOptions { world?: Partial<ViewerWorld> }
 
 declare global {
   interface Window { desktopFiles?: { pathForFile(file: File): string } }
@@ -18,7 +17,7 @@ export function createPicker(openWorld: OpenWorld) {
     list = document.querySelector<HTMLElement>("#file-list")!,
     message = document.querySelector<HTMLOutputElement>("#file-message")!,
     dimension = document.querySelector<HTMLSelectElement>("#source-dimension")!;
-  let listing: Listing, selected = "", kind: Kind = "world", onChoose = openWorld;
+  let listing: Listing, selected = "", lastPath = "";
   let currentWorld: Partial<ViewerWorld> = {};
   let opening: AbortController | null = null, browsing: AbortController | null = null;
   let dropping = false;
@@ -44,7 +43,6 @@ export function createPicker(openWorld: OpenWorld) {
   }
   resetRoot.onclick = () => setRoot("");
   dropZone.hidden = typeof desktopFiles?.pathForFile !== "function";
-  const paths = { world: "", pack: "" };
   const labels: Record<string, string> = {
     directory: "Java 存档", bedrock: "Bedrock 存档", folder: "目录",
     pack: "Java PackFS", texture: "材质包", level: "存档入口",
@@ -97,7 +95,7 @@ export function createPicker(openWorld: OpenWorld) {
     document.querySelector<HTMLButtonElement>("#open-directory")!.disabled = true;
     document.querySelector<HTMLButtonElement>("#parent")!.disabled = true;
     try {
-      const response = await fetch("/api/files?kind=" + kind + "&path=" + encodeURIComponent(path), { signal: controller.signal });
+      const response = await fetch("/api/files?kind=world&path=" + encodeURIComponent(path), { signal: controller.signal });
       if (!response.ok) throw Error(await response.text());
       listing = await response.json();
       selected = listing.selected;
@@ -145,7 +143,7 @@ export function createPicker(openWorld: OpenWorld) {
         };
         row.ondblclick = () => entry.directory ? browse(entry.path) : choose(entry.path);
         item.append(row);
-        if (kind === "world" && entry.directory) {
+        if (entry.directory) {
           const use = document.createElement("button");
           use.className = "use-output-dir icon-button";
           use.title = "设为转换输出目录";
@@ -182,20 +180,19 @@ export function createPicker(openWorld: OpenWorld) {
     if (opening) return;
     browsing?.abort();
     browsing = null;
-    message.textContent = kind === "pack" ? "正在合成材质包…" : "正在打开来源…";
+    message.textContent = "正在打开来源…";
     opening = new AbortController();
     search.disabled = true;
     document.querySelector<HTMLButtonElement>("#open-directory")!.disabled = true;
     try {
-      if (kind === "pack") await onChoose(path);
-      else await onChoose(path, {
+      await openWorld(path, {
         dimension: dimension.value,
         structureRoot: localStorage.getItem(rootKey) ?? "",
         bedrockFix: document.querySelector<HTMLInputElement>("#source-fix")!.checked,
         structureMemoryMiB: Number(document.querySelector<HTMLInputElement>("#source-memory")!.value),
         structureWorkers: Number(document.querySelector<HTMLInputElement>("#source-workers")!.value),
       }, progress, opening.signal);
-      paths[kind] = path;
+      lastPath = path;
       opening = null;
       dialog.close();
     } catch (error) {
@@ -249,26 +246,15 @@ export function createPicker(openWorld: OpenWorld) {
   });
   document.querySelector<HTMLButtonElement>("#parent")!.onclick = () => browse(listing.parent);
   document.querySelector<HTMLButtonElement>("#open-directory")!.onclick = () => choose(input.value);
-  return ({ kind: nextKind = "world", choose: callback = openWorld, world = {} }: PickerOptions = {}) => {
-    kind = nextKind;
+  return ({ world = {} }: PickerOptions = {}) => {
     currentWorld = world;
     showRoot(localStorage.getItem(rootKey) ?? "");
-    onChoose = callback;
     setDimensions(world.dimensions || [""]);
     dimension.value = world.dimension || "";
     document.querySelector<HTMLInputElement>("#source-fix")!.checked = world.bedrockFix ?? true;
     document.querySelector<HTMLInputElement>("#source-memory")!.value = String(world.structureMemoryMiB || 512);
     document.querySelector<HTMLInputElement>("#source-workers")!.value = String(world.structureWorkers || 0);
-    document.querySelector<HTMLElement>("#source-options")!.hidden = kind === "pack";
-    document.querySelector<HTMLElement>("#file-drop-title")!.textContent = kind === "pack"
-      ? "将材质包 ZIP 或目录拖到这里使用"
-      : "将存档目录或文件拖到这里打开";
-    dialog.querySelector("h2")!.textContent = kind === "pack" ? "选择材质包" : "打开存档或结构";
-    document.querySelector<HTMLButtonElement>("#open-directory")!.textContent = kind === "pack" ? "使用材质包" : "打开所选来源";
-    document.querySelector<HTMLElement>("#source-hint")!.textContent = kind === "pack"
-      ? "选择 zip 或包含 assets 的目录，也可直接输入路径。"
-      : "选中后点「打开所选来源」；双击存档目录可浏览内部。目录右侧的图标把它设为结构转换的输出目录。";
     dialog.showModal();
-    browse(world.path || paths[kind]);
+    browse(world.path || lastPath);
   };
 }

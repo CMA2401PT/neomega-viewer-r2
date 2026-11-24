@@ -1,7 +1,6 @@
 package server
 
 import (
-	"compress/gzip"
 	"io"
 	"io/fs"
 	"mime"
@@ -58,18 +57,4 @@ func assetHandler() http.Handler {
 		}
 		plain.ServeHTTP(w, r)
 	})
-}
-
-// 用户选择的材质和尺寸在请求时确定，因此边生成响应边压缩，避免另存整份传输缓冲区。
-func writeTextureSet(w http.ResponseWriter, r *http.Request, textures *r2assets.TextureSet) {
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Add("Vary", "Accept-Encoding")
-	if acceptsGzip(r.Header.Get("Accept-Encoding")) {
-		w.Header().Set("Content-Encoding", "gzip")
-		z, _ := gzip.NewWriterLevel(w, gzip.BestSpeed)
-		defer z.Close()
-		textures.WriteTo(z)
-		return
-	}
-	textures.WriteTo(w)
 }

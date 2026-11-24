@@ -15,7 +15,6 @@ import (
 	"neomega-r2link/blockactor"
 	"neomega-r2link/effector"
 	"neomega-r2link/object"
-	"neomega-view-utils/r2assets"
 	"neomega-viewer-r2/internal/filebrowse"
 	"neomega-viewer-r2/internal/mobius"
 	"neomega-viewer-r2/internal/snapshot"
@@ -278,22 +277,6 @@ func (s *Server) Handler(web fs.FS) http.Handler {
 			return
 		}
 		writeJSON(w, listing)
-	})
-	mux.HandleFunc("POST /api/textures", func(w http.ResponseWriter, r *http.Request) {
-		var request struct {
-			Path    string `json:"path"`
-			MaxSize int    `json:"maxSize"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			http.Error(w, err.Error(), 400)
-			return
-		}
-		textures, err := r2assets.BuildTextures(request.Path, request.MaxSize)
-		if err != nil {
-			http.Error(w, err.Error(), 400)
-			return
-		}
-		writeTextureSet(w, r, textures)
 	})
 	mux.HandleFunc("GET /r2link", s.link)
 	mux.Handle("/", http.FileServerFS(web))

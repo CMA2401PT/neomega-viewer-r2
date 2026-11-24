@@ -88,33 +88,7 @@
                 <svg><use href="#i-help" /></svg>
             </button>
         </template>
-        <template id="settings-extra">
-            <h3>材质包</h3>
-            <input
-                id="texture-path"
-                aria-label="材质包路径"
-                placeholder="原版，或输入 zip / 目录路径"
-            />
-            <div class="button-row">
-                <button id="texture-browse" class="button">
-                    <svg><use href="#i-folder" /></svg>选择…</button
-                ><button id="texture-reset" class="button">恢复原版</button
-                ><button id="texture-apply" class="button primary">应用</button>
-            </div>
-            <label class="setting"
-                >贴图尺寸上限<select id="texture-size">
-                    <option value="16">16</option>
-                    <option value="32">32</option>
-                    <option value="64">64</option>
-                    <option value="128">128</option>
-                    <option value="256">256</option>
-                    <option value="512">512</option>
-                </select></label
-            >
-            <p id="texture-status" class="hint">
-                原版 · 支持 labPBR 法线与高光贴图
-            </p>
-        </template>
+        <template id="settings-extra"><div id="material-controls"></div></template>
         <dialog id="help" class="panel dialog" aria-labelledby="help-title">
             <form method="dialog" class="dialog-header">
                 <h2 id="help-title">操作帮助</h2>
@@ -463,11 +437,11 @@
                     <div class="setting structure-root">转换输出目录<output id="structure-root"></output><button type="button" id="reset-structure-root" class="button">重置为源文件旁</button></div>
                     <p class="hint">不同来源的同名结构会直接打开已有转换结果，不覆盖。并发填 0 自动选择。</p>
                 </details>
-                <p id="source-hint" class="hint"></p>
+                <p id="source-hint" class="hint">选中后点「打开所选来源」。双击存档目录可浏览内部，目录右侧的图标可设置结构转换的输出目录。</p>
             </div>
             <footer class="dialog-footer">
                 <output id="file-message"></output
-                ><button id="open-directory" class="button primary">打开当前存档目录</button>
+                ><button id="open-directory" class="button primary">打开所选来源</button>
             </footer>
         </dialog>
         <script
