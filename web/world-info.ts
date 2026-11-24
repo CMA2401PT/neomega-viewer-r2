@@ -21,6 +21,8 @@ export function showWorldInfo(world: ViewerWorld) {
   }));
   dimension.value = world.dimension || "";
   element("world-dimension-row").hidden = !world.path;
+  element("world-kind").textContent = world.kind || "内置场景";
+  element("structure-reused").hidden = !world.reusedStructure;
   element("height-diagnostics").hidden = true;
 }
 
@@ -35,19 +37,4 @@ export function showConnection(connection?: Connection) {
   }
   close.title = connection ? "断开连接，返回 Möbius" : "关闭存档";
   close.setAttribute("aria-label", connection ? "断开连接" : "关闭存档");
-}
-
-/** 场景统计使用配对的标签和值，长路径留在单独的段落。 */
-export function showWorldDetails(rows: ReadonlyArray<readonly [string, string]>) {
-  element("details").replaceChildren(
-    ...rows.map(([name, value]) => {
-      const row = document.createElement("div"),
-        dt = document.createElement("dt"),
-        dd = document.createElement("dd");
-      dt.textContent = name;
-      dd.textContent = value;
-      row.append(dt, dd);
-      return row;
-    }),
-  );
 }

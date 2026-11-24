@@ -1,4 +1,4 @@
-/* Viewer 独有的界面：场景信息、存档与数据源对话框、材质包设置和帮助。
+/* Viewer 独有的界面：场景信息、存档与数据源对话框。
  * 按钮、输入框、对话框骨架和设置面板沿用 common_ui/style.css。 */
 .app-symbols {
   position: absolute;
@@ -69,26 +69,6 @@
   overflow-wrap: anywhere;
   margin: -5px 0 14px;
 }
-#details {
-  margin: 0;
-  font-size: 12px;
-}
-#details div {
-  display: flex;
-  justify-content: space-between;
-  padding: 5px 0;
-  gap: 16px;
-  border-bottom: 1px solid #edf0f0;
-}
-#details dt {
-  color: var(--muted);
-}
-#details dd {
-  margin: 0;
-  text-align: right;
-  font-family: var(--mono);
-}
-
 #link-dialog {
   width: min(480px, calc(100vw - 32px));
 }
@@ -323,75 +303,4 @@
 }
 #file-drop[aria-busy="true"] {
   opacity: 0.6;
-}
-
-/* 帮助的标题栏固定，只有说明区域滚动，短屏上也能随时关闭。 */
-#help {
-  width: min(640px, calc(100vw - 48px));
-  max-height: min(80dvh, 800px);
-}
-.help-content {
-  padding-top: 0;
-}
-.help-content h3 {
-  font-size: 13px;
-  color: var(--ink);
-  margin-top: 16px;
-  margin-bottom: 10px;
-}
-.help-content > h3:first-child {
-  border: 0;
-}
-.help-icons {
-  display: grid;
-  grid-template-columns: 10em 1fr;
-  column-gap: 16px;
-  row-gap: 10px;
-  align-items: start;
-  margin: 0;
-}
-.help-icons dt {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-weight: 600;
-}
-.help-icons dt:not(:has(svg)) {
-  padding-left: 27px;
-}
-.help-icons svg {
-  width: 20px;
-  height: 20px;
-}
-.help-icons dd {
-  margin: 0;
-  color: #394747;
-  text-wrap: pretty;
-}
-.help-about a {
-  color: #096562;
-}
-.help-about {
-  container-type: inline-size;
-}
-.help-banner {
-  font-family:
-    "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  font-size: min(12px, 2.3cqw);
-  line-height: 1.08;
-  color: #235a58;
-  background: rgba(144, 175, 172, 0.12);
-  padding: 14px 0;
-  text-align: left;
-  white-space: pre;
-  overflow: auto;
-}
-@media (max-width: 440px) {
-  .help-icons {
-    grid-template-columns: 1fr;
-    gap: 4px;
-  }
-  .help-icons dd {
-    margin: 0 0 8px 27px;
-  }
 }

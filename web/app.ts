@@ -5,23 +5,14 @@ import { materialControls } from "/r2/common_ui/material-controls.js";
 import { exportSnapshot } from "./export.js";
 import type { TextureSet, Renderer, RendererOptions, R2LinkSource } from "/r2/index.js";
 import type { Connection, OpenOptions, Progress, ViewerWorld } from "./types.js";
-import { createView, TIER_NAMES, type ViewSettings, type ViewStats } from "/r2/common_ui/view.js";
+import { createView, type ViewSettings, type ViewStats } from "/r2/common_ui/view.js";
 import { element, closePopovers } from "/r2/common_ui/hud.js";
-import { showWorldInfo, showConnection, showWorldDetails } from "./world-info.js";
+import { showWorldInfo, showConnection } from "./world-info.js";
 import { createPicker } from "./picker.js";
 import { startupStage } from "/r2/common_ui/startup.js";
 
 // Electron embeds this page at r2://app. The GLSL inspection tools explicitly request WebGL.
 const useWebGPU = isSecureContext && !!navigator.gpu && location.protocol !== "r2:" && new URLSearchParams(location.search).get("backend") !== "webgl";
-
-
-// 帮助使用模态窗口，阅读时暂停场景键盘操作，关闭后由浏览器归还焦点。
-const help = element<HTMLDialogElement>("help");
-element("help-open").onclick = () => {
-  closePopovers();
-  help.showModal();
-};
-help.onkeydown = event => event.stopPropagation();
 
 const canvas = element<HTMLCanvasElement>("view");
 const camera = { position: [0, 80, 0], yaw: -0.7, pitch: -0.32 };
@@ -161,7 +152,7 @@ const view = createView({
   renderer, camera, settings,
   scene: () => ({ name: world.name, ocean: world.scene?.ocean, connection: world.connection }),
   onSettings: () => localStorage.setItem("neomega-r2-settings", JSON.stringify(settings)),
-  onStats: showDetails,
+  onStats: updateViewerStatus,
 });
 const { hud, map, frames } = view;
 exportButton.onclick = async () => {
@@ -306,34 +297,13 @@ const materials = materialControls(element("material-controls"), async (set, inp
   view.refreshSettings();
 }, settings.textureSize);
 
-function showDetails({ stats, shownTier, median, width, height }: ViewStats) {
+function updateViewerStatus({ stats, median }: ViewStats) {
   if (view.debugStatus.checkVisibility()) {
     view.debugStatus.textContent = `已加载 ${stats.loaded}/${stats.wanted} 个区域 · GPU 中位耗时 ${median?.toFixed(2) ?? "…"} ms`;
   }
   const clipped = source?.clippedSections ?? 0;
   element("height-diagnostics").hidden = clipped === 0;
   element("height-diagnostics").textContent = `有 ${clipped} 个子区块（subchunk）超出可显示高度（Y -64～447，按已收到的 r2region 统计）`;
-  showWorldDetails([
-    ["来源", world.kind || "内置场景"],
-    ["预览渲染器", TIER_NAMES[shownTier]],
-    ...(world.reusedStructure ? [["结构输出", "复用已有存档"]] as const : []),
-    ["近景半径", `${settings.nearRadius} 区块 (chunk)`],
-    ["远景半径", `${settings.farRadius} 区块 (chunk)`],
-    [
-      "窗口覆盖",
-      `${settings.farRadius * 32}×${settings.farRadius * 32}×512 方块`,
-    ],
-    ["静态子区块（subchunk）", String(stats.sections)],
-    ["已发布 r2region", `${stats.loaded}/${stats.wanted}`],
-    ["待更新 / 失败 r2region", `${stats.pending} / ${stats.failed}`],
-    ["特殊对象", String(stats.objects)],
-    ...(stats.unknownBlocks ? [["未知方块", String(stats.unknownBlocks)]] as const : []),
-    ["累计传输", `${(stats.bytes / 1024 ** 2).toFixed(1)} MiB`],
-    ["r2region 显存", `${(stats.usedBytes / 1024 ** 2).toFixed(1)} MiB`],
-    ["GPU 纹理", `${(renderer.textureBytes / 1024 ** 2).toFixed(1)} MiB`],
-    ["GPU 中位数", `${median?.toFixed(2) || "…"} ms`],
-    ["实际像素", `${width}×${height}`],
-  ]);
 }
 
 function frame(now: number) {

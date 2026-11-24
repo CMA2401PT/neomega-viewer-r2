@@ -57,7 +57,6 @@ async function start() {
     ...world.settings,
   };
   document.title = world.name + " · R2 建筑预览";
-  element("building-name").textContent = world.name;
   const renderer = await createRenderer(element<HTMLCanvasElement>("view"), {
     useWebGPU: isSecureContext && !!navigator.gpu && new URLSearchParams(location.search).get("backend") !== "webgl",
     tier: settings.tier,
