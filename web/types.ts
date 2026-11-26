@@ -1,4 +1,4 @@
-import type { R2LinkCamera, R2LinkState } from "/r2/index.js";
+import type { R2LinkCamera, R2LinkState } from "/r2/r2-link.js";
 
 export interface OpenOptions {
   dimension?: string;

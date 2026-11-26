@@ -1,4 +1,4 @@
-import { element } from "/r2/common_ui/hud.js";
+import { element } from "/r2/r2-frontend.js";
 
 import { dimensionName, type Connection, type ViewerWorld } from "./types.js";
 

@@ -1,7 +1,5 @@
-import { createRenderer, ObjectRegistry, WorldSession, type Camera, type DataSource, type WorldSink } from "/r2/index.js";
-import { createView, type ViewSettings } from "/r2/common_ui/view.js";
-import { element } from "/r2/common_ui/hud.js";
-import { startupStage, failStartup } from "/r2/common_ui/startup.js";
+import { createRenderer, ObjectRegistry, WorldSession, type Camera, type DataSource, type WorldSink } from "neomega-r2-core";
+import { createStartup, createView, element, type ViewSettings } from "neomega-r2-frontend/ui";
 
 interface Dimension {
   id: string;
@@ -46,6 +44,8 @@ function staticSource(regions: Map<string, string>): DataSource {
   };
 }
 
+const startup = createStartup();
+
 async function start() {
   const world: ExportedWorld = JSON.parse(element("r2-world").textContent);
   if (world.version !== 1 || !world.dimensions.length) throw Error("无法识别导出的世界数据");
@@ -57,26 +57,25 @@ async function start() {
     ...world.settings,
   };
   document.title = world.name + " · R2 建筑预览";
-  const renderer = await createRenderer(element<HTMLCanvasElement>("view"), {
+  const renderer = await createRenderer({
     tier: settings.tier,
     readResource: async name => {
       if (!(name in resources)) throw Error("网页缺少渲染资源 " + name);
       return unpack(resources[name]);
     },
-    onProgress: ({ label }) => startupStage(label),
+    onProgress: ({ label }) => startup.stage(label),
   });
   const camera: Camera = { position: [0, 0, 0], yaw: -Math.PI / 4, pitch: -Math.PI / 6 };
   const near = element<HTMLInputElement>("near-radius");
   near.disabled = true;
   near.title = "建筑快照只包含静态方块";
   const view = createView({
-    renderer, camera, settings, scene: () => ({ name: world.name, ocean: world.ocean }),
+    renderer, camera, settings, startup, scene: () => ({ name: world.name, ocean: world.ocean }),
     onStats: ({ stats, median }) => {
       if (status.checkVisibility()) status.textContent = `${stats.sections} 个子区块 · ${stats.loaded}/${stats.wanted} 个 r2region · GPU ${median?.toFixed(2) ?? "…"} ms`;
     },
   });
   const status = view.debugStatus;
-  const workerURL = URL.createObjectURL(new Blob([element("r2-worker").textContent], { type: "text/javascript" }));
   const sets = new Map<number, Map<string, string>>();
   for (const tag of document.querySelectorAll<HTMLScriptElement>("script[data-r2-region]")) {
     const key = Number(tag.dataset.dimension);
@@ -102,7 +101,7 @@ async function start() {
       camera.position = center.map((v, i) => v + distance * [Math.sqrt(3 / 8), 0.5, Math.sqrt(3 / 8)][i]);
     }
     session = new WorldSession(renderer, staticSource(sets.get(dimension.key)!), {
-      registry: new ObjectRegistry(), workerURL, workerType: "classic", onError: message => view.hud.error(message),
+      registry: new ObjectRegistry(), onError: message => view.hud.error(message),
     });
     const chunks = element("r2-chunks-" + dimension.key).textContent;
     void view.setWorld(true, () => unpack(chunks).arrayBuffer()).catch(error => view.hud.error(String(error)));
@@ -112,7 +111,7 @@ async function start() {
   for (const dimension of world.dimensions) select.add(new Option(labels[dimension.id] ?? dimension.id));
   select.hidden = select.length < 2;
   select.onchange = () => openDimension(world.dimensions[select.selectedIndex]);
-  await startupStage("正在准备建筑…");
+  await startup.stage("正在准备建筑…");
   openDimension(world.dimensions[0]);
   function frame(now: number) {
     view.frame(now, session);
@@ -124,8 +123,7 @@ async function start() {
     view.dispose();
     session?.dispose();
     renderer.dispose();
-    URL.revokeObjectURL(workerURL);
   });
 }
 
-start().catch(failStartup);
+start().catch((error) => startup.fail(error));

@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: neomega-r2/r2/package-lock.json
+          cache-dependency-path: neomega-r2/package-lock.json
       - uses: actions/setup-go@v6
         with:
           go-version-file: apps/neomega-viewer-r2/go.mod

@@ -1,4 +1,4 @@
-import type { MaterialInput } from "/r2/materials/import.js";
+import type { MaterialInput } from "/r2/r2-materials.js";
 
 export type SavedMaterial = Exclude<MaterialInput, File[]>;
 

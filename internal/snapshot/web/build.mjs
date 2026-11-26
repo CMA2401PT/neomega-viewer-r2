@@ -1,27 +1,52 @@
-// 生成 Go 要嵌入的播放组件。模块和 worker 分别打包，导出的 HTML 在 file:// 下也能启动。
+// 生成 Go 要嵌入的离线播放组件。模块内嵌着色器与 worker，导出的 HTML 在 file:// 下也能启动。
 import { createRequire } from "node:module";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
-import { defaultAssets } from "../../../../../neomega-r2/r2/scripts/default-assets.mjs";
+import { defaultAssets } from "../../../../../neomega-r2/assets-utils/scripts/default-assets.mjs";
+import { websrModels } from "../../../../../neomega-r2/r2-frontend/scripts/websr-models.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const core = fileURLToPath(new URL("../../../../../neomega-r2/r2/", import.meta.url));
-const dist = join(core, "dist");
-const { build } = createRequire(join(core, "package.json"))("esbuild");
-async function bundle(entry, format = "esm") {
-  const result = await build({
-    entryPoints: [entry], write: false, bundle: true, format, target: "es2022",
-    plugins: [{
-      name: "r2",
-      setup(build) {
-        build.onResolve({ filter: /^\/r2\// }, ({ path }) => ({ path: join(dist, path.slice(4)) }));
-      },
-    }],
-  });
-  return result.outputFiles[0].text;
-}
+const r2Root = fileURLToPath(new URL("../../../../../neomega-r2/", import.meta.url));
+const coreDist = join(r2Root, "r2-core/dist");
+const assetsDist = join(r2Root, "assets-utils/dist");
+const frontendDist = join(r2Root, "r2-frontend/dist");
+const { build } = createRequire(join(r2Root, "package.json"))("esbuild");
+
+const shaderFiles = readdirSync(join(coreDist, "render")).filter((name) => name.endsWith(".wgsl"));
+const shaders = Object.fromEntries(shaderFiles.map((name) => [name, readFileSync(join(coreDist, "render", name), "utf8")]));
+const sceneWorker = (await build({
+  entryPoints: [join(coreDist, "scene/worker.js")],
+  bundle: true,
+  format: "iife",
+  write: false,
+  target: "es2022",
+  minify: true,
+})).outputFiles[0].text;
+
+const main = (await build({
+  entryPoints: [join(here, "main.ts")],
+  write: false,
+  bundle: true,
+  format: "esm",
+  target: "es2022",
+  minify: true,
+  define: {
+    "import.meta.url": "document.baseURI",
+    R2_SHADERS: JSON.stringify(shaders),
+    R2_SCENE_WORKER: JSON.stringify(sceneWorker),
+    R2_WEBSR_MODELS: JSON.stringify(websrModels),
+  },
+  plugins: [{
+    name: "r2-workspace",
+    setup(b) {
+      b.onResolve({ filter: /^neomega-r2-core$/ }, () => ({ path: join(coreDist, "index.js") }));
+      b.onResolve({ filter: /^neomega-r2-materials$/ }, () => ({ path: join(assetsDist, "index.js") }));
+      b.onResolve({ filter: /^neomega-r2-frontend\/ui$/ }, () => ({ path: join(frontendDist, "ui.js") }));
+    },
+  }],
+})).outputFiles[0].text;
 
 const resources = {};
 for (const entry of defaultAssets.getEntries()) {
@@ -30,19 +55,17 @@ for (const entry of defaultAssets.getEntries()) {
     resources[file] = gzipSync(entry.getData()).toString("base64");
   }
 }
-for (const file of readdirSync(join(dist,"render")).filter(name => name.endsWith(".wgsl"))) {
-  resources[file] = gzipSync(readFileSync(join(dist, "render", file))).toString("base64");
-}
-const shared = name => readFileSync(join(dist, "common_ui", name), "utf8");
+
+const uiDir = join(r2Root, "r2-frontend/src/ui");
+const styleCSS = readFileSync(join(uiDir, "style.css"), "utf8");
 const actions = '<select id="export-dimension" aria-label="维度" hidden></select>';
-const layout = shared("layout.html")
+const layout = readFileSync(join(uiDir, "layout.html"), "utf8")
   .replace('<slot name="actions"></slot>', actions)
   .replace(/<slot name="[^"]+"><\/slot>/g, "");
-const [main, worker] = await Promise.all([bundle(join(here, "main.ts")), bundle(join(dist, "scene/worker.js"), "iife")]);
-const player = `<style>${shared("style.css")}</style>
+
+const player = `<style>${styleCSS}</style>
 ${layout}
 <script type="application/json" id="r2-resources">${JSON.stringify(resources)}</script>
-<script type="text/plain" id="r2-worker">${worker}</script>
 <script type="module">${main}</script>`;
 mkdirSync(join(here, "dist"), { recursive: true });
 writeFileSync(join(here, "dist/player.html"), player);

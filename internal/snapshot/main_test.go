@@ -99,7 +99,7 @@ func TestDefaultTemplateIncludesOfflinePlayer(t *testing.T) {
 	if strings.Count(defaultTemplate, worldMarker) != 1 || strings.Count(defaultTemplate, viewerMarker) != 1 {
 		t.Fatal("内置模板的注入标记不完整")
 	}
-	for _, id := range []string{"r2-worker", "r2-resources", "view", "teleport"} {
+	for _, id := range []string{"r2-resources", "view", "teleport"} {
 		if !strings.Contains(player, `id="`+id+`"`) {
 			t.Fatalf("内嵌播放器缺少 %s", id)
 		}

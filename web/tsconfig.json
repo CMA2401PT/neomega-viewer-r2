@@ -1,16 +1,15 @@
 {
-  "extends": "../../../neomega-r2/r2/tsconfig.json",
+  "extends": "../../../neomega-r2/r2-core/tsconfig.json",
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "dist",
     "declaration": false,
     "paths": {
-      "/r2/*": [
-        "../../../neomega-r2/r2/dist/*"
-      ]
+      "/r2/r2-core.js": ["../../../neomega-r2/r2-core/dist/index.d.ts"],
+      "/r2/r2-link.js": ["../../../neomega-r2/r2-link/dist/index.d.ts"],
+      "/r2/r2-materials.js": ["../../../neomega-r2/assets-utils/dist/index.d.ts"],
+      "/r2/r2-frontend.js": ["../../../neomega-r2/r2-frontend/dist/ui.d.ts"]
     }
   },
-  "include": [
-    "*.ts"
-  ]
+  "include": ["*.ts"]
 }

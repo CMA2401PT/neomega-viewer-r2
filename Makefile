@@ -18,7 +18,7 @@
 # 当本机依赖与各自远端默认分支一致时，可以用 make update-deps 自动更新锁文件。
 
 NAME := neOmega-R2
-R2 := ../../neomega-r2/r2
+R2 := ../../neomega-r2
 TSC := $(R2)/node_modules/typescript/bin/tsc
 NPM_LOCK := $(R2)/node_modules/.package-lock.json
 RELEASE_LOCK := release-deps.lock
@@ -39,7 +39,7 @@ $(NPM_LOCK): $(R2)/package-lock.json
 	npm ci --prefix "$(R2)"
 
 web: $(NPM_LOCK)
-	node "$(R2)/scripts/build.mjs"
+	npm run build --prefix "$(R2)"
 	node "$(TSC)" -p web
 	node "$(TSC)" -p internal/snapshot/web
 	node internal/snapshot/web/build.mjs

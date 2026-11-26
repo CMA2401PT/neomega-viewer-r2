@@ -10,7 +10,7 @@ import (
 	"io/fs"
 	"neomega-converter-core/structure"
 	"neomega-converter-core/worldinput"
-	r2 "neomega-r2"
+	r2frontend "neomega-r2-frontend"
 	"neomega-r2link"
 	"neomega-r2link/blockactor"
 	"neomega-r2link/effector"
@@ -91,17 +91,15 @@ func newSession(info Info, source worldSource) *session {
 
 // Server 串行切换来源，并限制区域读取的并发量。
 type Server struct {
-	// DesktopHost 允许内置 Electron 页面连接本机世界。
-	DesktopHost bool
-	Options     worldsource.Options
-	mu          sync.RWMutex
-	openMu      sync.Mutex
-	current     *session
-	builtin     *mobius.World
-	revision    uint64
-	workers     chan struct{}
-	Effects     effector.Registry
-	Actors      blockactor.Registry
+	Options  worldsource.Options
+	mu       sync.RWMutex
+	openMu   sync.Mutex
+	current  *session
+	builtin  *mobius.World
+	revision uint64
+	workers  chan struct{}
+	Effects  effector.Registry
+	Actors   blockactor.Registry
 }
 
 // New 接收应用启用的特效与方块实体处理器。
@@ -228,7 +226,7 @@ func queryInt(r *http.Request, name string) (int, error) {
 // Handler 让内置场景与文件来源使用相同接口，并提供公共渲染资源。
 func (s *Server) Handler(web fs.FS) http.Handler {
 	mux := http.NewServeMux()
-	core, _ := fs.Sub(r2.Files, "dist")
+	core, _ := fs.Sub(r2frontend.Files, "dist/web")
 	mux.Handle("/r2/assets/", http.StripPrefix("/r2/assets/", assetHandler()))
 	mux.Handle("/r2/", http.StripPrefix("/r2/", http.FileServerFS(core)))
 	mux.HandleFunc("GET /api/export/template", func(w http.ResponseWriter, r *http.Request) {
@@ -297,11 +295,7 @@ func (s *Server) link(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "存档已经切换", 409)
 		return
 	}
-	options := &websocket.AcceptOptions{}
-	if s.DesktopHost {
-		options.OriginPatterns = []string{"r2://app"}
-	}
-	conn, err := r2link.Accept(w, r, options)
+	conn, err := r2link.Accept(w, r, &websocket.AcceptOptions{})
 	if err != nil {
 		return
 	}

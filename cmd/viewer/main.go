@@ -3,10 +3,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"io/fs"
 	"neomega-converter-core/structure"
 	"neomega-r2link/blockactor"
@@ -50,30 +48,19 @@ func run() error {
 	structureMemory := flag.Int("structure-memory-mib", 512, "结构转换工作内存预算（MiB，至少 64）")
 	structureWorkers := flag.Int("structure-workers", 0, "结构写出并发上限，0 自动选择")
 	webPath := flag.String("web", "", "开发时读取应用网页目录")
-	desktopHost := flag.Bool("desktop-host", false, "桌面宿主模式：stdout 上报 JSON 就绪消息，stdin 关闭时退出，不启动外部浏览器")
 	showVersion := flag.Bool("version", false, "打印版本号后退出")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(version)
 		return nil
 	}
-	colored := !*desktopHost && terminalColors()
-	if !*desktopHost {
-		printBanner(os.Stdout, version, colored)
-	}
-	if *desktopHost {
-		// 宿主独占 stdin 管道；正常关闭或宿主崩溃都通过 EOF 释放服务。
-		go func() {
-			_, _ = io.Copy(io.Discard, os.Stdin)
-			stop()
-		}()
-	}
+	colored := terminalColors()
+	printBanner(os.Stdout, version, colored)
 	// 新的特效和 NBT 方块处理器在这里显式组装，核心不决定应用启用哪些内容。
 	service := server.New(
 		effector.Registry{"minecraft:enchanting_table": effector.Kind("enchanting_book")},
 		blockactor.Registry{},
 	)
-	service.DesktopHost = *desktopHost
 	service.Options.SkipBedrockFix = !*bedrockFix
 	service.Options.Structure = structure.Options{MemoryMiB: *structureMemory, Workers: *structureWorkers}
 	defer service.Close()
@@ -110,20 +97,13 @@ func run() error {
 		local = "127.0.0.1"
 	}
 	url := "http://" + net.JoinHostPort(local, fmt.Sprint(address.Port))
-	if *desktopHost {
-		if err := json.NewEncoder(os.Stdout).Encode(map[string]string{"event": "ready", "url": url}); err != nil {
-			_ = httpServer.Close()
-			return err
-		}
-	} else {
-		fmt.Println("  本地    " + terminalText(colored, "1;97", url))
-		ips := lanAddresses(address.IP)
-		for _, ip := range ips {
-			fmt.Println(terminalText(colored, "38;5;245", fmt.Sprintf("  局域网  http://%s:%d", ip, address.Port)))
-		}
-		if len(ips) > 0 {
-			fmt.Println("  通过局域网 HTTP 地址访问时，浏览器可能会禁用 WebGPU。")
-		}
+	fmt.Println("  本地    " + terminalText(colored, "1;97", url))
+	ips := lanAddresses(address.IP)
+	for _, ip := range ips {
+		fmt.Println(terminalText(colored, "38;5;245", fmt.Sprintf("  局域网  http://%s:%d", ip, address.Port)))
+	}
+	if len(ips) > 0 {
+		fmt.Println("  通过局域网 HTTP 地址访问时，浏览器可能会禁用 WebGPU。")
 	}
 	select {
 	case err := <-done:

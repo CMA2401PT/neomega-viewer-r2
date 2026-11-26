@@ -9,7 +9,7 @@ require (
 	neomega-converter v0.0.0
 	neomega-converter-core v0.0.0
 	neomega-nbt v0.0.0
-	neomega-r2 v0.0.0
+	neomega-r2-frontend v0.0.0
 	neomega-r2link v0.0.0
 	neomega-view-utils/fixer v0.0.0 // indirect
 	neomega-view-utils/r2assets v0.0.0
@@ -31,7 +31,7 @@ replace neomega-nbt => ../../neomega-nbt
 
 replace neomega-packfs => ../../neomega-packfs
 
-replace neomega-r2 => ../../neomega-r2/r2
+replace neomega-r2-frontend => ../../neomega-r2/r2-frontend
 
 replace neomega-r2link => ../../neomega-r2/go-link
 

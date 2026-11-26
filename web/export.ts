@@ -1,5 +1,6 @@
-import { decodeRegion, r2linkSource, type Camera, type RegionCoord, type TextureSet } from "/r2/index.js";
-import type { ViewSettings } from "/r2/common_ui/view.js";
+import { decodeRegion, type Camera, type RegionCoord, type TextureSet } from "/r2/r2-core.js";
+import { r2linkSource } from "/r2/r2-link.js";
+import type { ViewSettings } from "/r2/r2-frontend.js";
 
 interface Snapshot {
   sourceURL: string;

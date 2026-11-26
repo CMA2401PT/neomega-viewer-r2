@@ -279,28 +279,3 @@
     transition: none;
   }
 }
-
-#file-drop {
-  border: 2px dashed #777;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.86);
-  padding: 18px 12px;
-  text-align: center;
-}
-#file-drop strong,
-#file-drop span {
-  display: block;
-  pointer-events: none;
-}
-#file-drop span {
-  margin-top: 5px;
-  font-size: 12px;
-  color: var(--muted);
-}
-#file-drop.drag-over {
-  background: #fff;
-  border-color: var(--ink);
-}
-#file-drop[aria-busy="true"] {
-  opacity: 0.6;
-}

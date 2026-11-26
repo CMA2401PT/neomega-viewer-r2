@@ -1,13 +1,9 @@
-// 存档从服务端目录浏览器选择；Electron 也可提交用户拖入的本机路径。
+// 存档从服务端目录浏览器选择。
 import { dimensionName, type OpenWorld, type Progress, type ViewerWorld } from "./types.js";
 
 interface Entry { name: string; path: string; kind: string; directory: boolean; openable: boolean }
 interface Listing { path: string; parent: string; selected: string; kind: string; roots: Entry[]; entries: Entry[] }
 interface PickerOptions { world?: Partial<ViewerWorld> }
-
-declare global {
-  interface Window { desktopFiles?: { pathForFile(file: File): string } }
-}
 
 /** 文件选择与打开分开，让用户在转换前选定维度、修复和预算。 */
 export function createPicker(openWorld: OpenWorld) {
@@ -20,9 +16,6 @@ export function createPicker(openWorld: OpenWorld) {
   let listing: Listing, selected = "", lastPath = "";
   let currentWorld: Partial<ViewerWorld> = {};
   let opening: AbortController | null = null, browsing: AbortController | null = null;
-  let dropping = false;
-  const dropZone = document.querySelector<HTMLElement>("#file-drop")!;
-  const desktopFiles = window.desktopFiles;
   const destination = document.querySelector<HTMLOutputElement>("#structure-root")!;
   const resetRoot = document.querySelector<HTMLButtonElement>("#reset-structure-root")!;
   const rootKey = "neomega-r2-structure-root";
@@ -42,7 +35,6 @@ export function createPicker(openWorld: OpenWorld) {
     message.textContent = path ? "转换输出目录：" + path : "转换结果将放在源文件旁。";
   }
   resetRoot.onclick = () => setRoot("");
-  dropZone.hidden = typeof desktopFiles?.pathForFile !== "function";
   const labels: Record<string, string> = {
     directory: "Java 存档", bedrock: "Bedrock 存档", folder: "目录",
     pack: "Java PackFS", texture: "材质包", level: "存档入口",
@@ -206,38 +198,6 @@ export function createPicker(openWorld: OpenWorld) {
   dialog.addEventListener("close", () => {
     opening?.abort();
     browsing?.abort();
-    dropZone.classList.remove("drag-over");
-  });
-  dropZone.addEventListener("dragover", (event) => {
-    event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = opening || dropping ? "none" : "copy";
-    if (!opening && !dropping) dropZone.classList.add("drag-over");
-  });
-  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
-  dropZone.addEventListener("drop", async (event) => {
-    event.preventDefault();
-    dropZone.classList.remove("drag-over");
-    if (opening || dropping || !desktopFiles || !event.dataTransfer) return;
-    const files = [...event.dataTransfer.files];
-    if (files.length !== 1) {
-      message.textContent = "请一次拖入一个目录或文件。";
-      return;
-    }
-    dropping = true;
-    dropZone.setAttribute("aria-busy", "true");
-    try {
-      const path = desktopFiles.pathForFile(files[0]);
-      if (!path) throw Error("无法读取路径，请从文件资源管理器拖入本地目录或文件。");
-      const chosenDimension = dimension.value;
-      // 先由 Go 识别来源种类、规范化路径，再走原有打开、转换与取消流程。
-      if (!await browse(path) || !dialog.open) return;
-      if ([...dimension.options].some((option) => option.value === chosenDimension)) dimension.value = chosenDimension;
-      await choose(input.value);
-    } catch (error) { message.textContent = String(error); }
-    finally {
-      dropping = false;
-      dropZone.setAttribute("aria-busy", "false");
-    }
   });
   document.querySelector<HTMLButtonElement>("#browse")!.onclick = () => browse(input.value);
   input.addEventListener("input", () => { setDimensions([""]); });

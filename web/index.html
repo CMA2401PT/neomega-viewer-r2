@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width,initial-scale=1" />
         <link rel="icon" href="data:," />
         <title>neOmega Viewer R2</title>
-        <link rel="stylesheet" href="/r2/common_ui/style.css" />
+        <link rel="stylesheet" href="/r2/style.css" />
         <link rel="stylesheet" href="/style.css" />
     </head>
     <body>
@@ -163,12 +163,6 @@
                 </button>
             </form>
             <div class="dialog-body">
-                <div id="file-drop" hidden>
-                    <strong id="file-drop-title"
-                        >将存档目录或文件拖到这里打开</strong
-                    >
-                    <span>一次一个，松开即打开；可先调整下方打开选项</span>
-                </div>
                 <div class="path-row">
                     <button id="parent" class="button" title="上级目录" aria-label="上级目录">
                         <svg><use href="#i-parent" /></svg></button
@@ -221,10 +215,6 @@
                 ><button id="open-directory" class="button primary">打开所选来源</button>
             </footer>
         </dialog>
-        <script
-            type="module"
-            src="/r2/common_ui/boot.js"
-            data-entry="/dist/app.js"
-        ></script>
+        <script type="module" src="/dist/app.js"></script>
     </body>
 </html>

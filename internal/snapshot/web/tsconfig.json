@@ -1,5 +1,13 @@
 {
   "extends": "../../../web/tsconfig.json",
-  "compilerOptions": { "rootDir": ".", "noEmit": true },
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "paths": {
+      "neomega-r2-core": ["../../../../../neomega-r2/r2-core/dist/index.d.ts"],
+      "neomega-r2-materials": ["../../../../../neomega-r2/assets-utils/dist/index.d.ts"],
+      "neomega-r2-frontend/ui": ["../../../../../neomega-r2/r2-frontend/dist/ui.d.ts"]
+    }
+  },
   "include": ["*.ts"]
 }
