@@ -90,7 +90,7 @@ async function main() {
       }
       await page.addInitScript(() => {
         localStorage.setItem("neomega-r2-settings", JSON.stringify({
-          nearRadius: 2, farRadius: 32, resolution: "native", tier: "shading",
+          nearRadius: 2, farRadius: 32, resolution: "1", tier: "shading",
           time: 10, timeFlow: false, stillAccumulation: false, accumulationFilter: "off", fog: true,
         }));
         // 宿主和实验不能同时绘制。保留启动界面及浏览器自身的刷新。

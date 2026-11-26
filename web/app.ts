@@ -20,15 +20,15 @@ for (const key of ["stillSamples", "photoSamples", "shadows", "texturePath"]) de
 const settings: ViewSettings & { textureSize: number } = {
   nearRadius: 2,
   farRadius: 32,
-  resolution: "native",
+  resolution: "1",
   speed: 32,
   tier: "shading",
   time: 10,
   timeFlow: true,
   fog: true,
   stillAccumulation: false,
-  photoScale: 2, photoSupersample: 1,
-  exportScale: 2, exportSupersample: 1,
+  photoScale: 1, photoSupersample: 1,
+  exportScale: 1, exportSupersample: 1,
   textureSize: 128,
   ...savedSettings,
 };

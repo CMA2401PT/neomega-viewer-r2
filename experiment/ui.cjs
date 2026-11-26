@@ -26,7 +26,8 @@ fs.mkdirSync(out + "/shots", { recursive: true });
     ]) {
       const context = await browser.newContext({
         viewport: { width, height },
-        deviceScaleFactor: 1,
+        // 在高密度显示器上验证 1× 照片仍与窗口等大。
+        deviceScaleFactor: width === 1280 ? 2 : 1,
       });
       const page = await context.newPage();
       page.on("pageerror", (error) => result.errors.push(String(error)));
@@ -95,7 +96,7 @@ fs.mkdirSync(out + "/shots", { recursive: true });
             s.photoSupersample, s.exportSupersample, s.superResolution,
           ];
         }),
-        [2, 32, "shading", true, "native", 1, 1, "off"],
+        [2, 32, "shading", true, "1", 1, 1, "off"],
       );
       // 开启静止累积会暂停昼夜，照片和地图拾取由此使用固定光照。
       await page.click("#still-accumulation");
@@ -138,7 +139,7 @@ fs.mkdirSync(out + "/shots", { recursive: true });
         assert.equal(picks.miss, null);
         assert(picks.accumulationPreserved);
         result.checks.push({ picks });
-        await change("resolution", "native-0.5");
+        await change("resolution", "0.5");
         await change("photo-scale", 1);
         const downloadEvent = page.waitForEvent("download");
         await page.click("#photo");
@@ -149,17 +150,13 @@ fs.mkdirSync(out + "/shots", { recursive: true });
         await page.waitForFunction(
           () => document.querySelector("#photo-progress").hidden,
         );
-        assert.equal(
-          fs
-            .readFileSync(out + "/fixture-photo.png")
-            .subarray(1, 4)
-            .toString(),
-          "PNG",
-        );
+        const png = fs.readFileSync(out + "/fixture-photo.png");
+        assert.equal(png.subarray(1, 4).toString(), "PNG");
+        assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [width, height]);
         await page.click("#photo");
         await page.keyboard.press("Escape");
         assert(await page.locator("#photo-progress").isHidden());
-        await change("resolution", "native");
+        await change("resolution", "1");
         result.checks.push({ photoDownload: true, photoCancel: true });
       }
       // 已知测试存档在 (10,2,8) 有石英砖，两种视口都能稳定复现地图拾取。
