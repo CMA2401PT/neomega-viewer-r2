@@ -62,7 +62,6 @@ async function check(file) {
     await page.waitForFunction(() =>
       document.getElementById("startup-status").hidden &&
       document.getElementById("loading").textContent === "已加载", null, { timeout: 120000 });
-    assert.equal(await page.locator("#render-backend").textContent(), "WebGPU");
     const meta = JSON.parse(await page.locator("#r2-world").textContent());
     if (expected) {
       assert.deepEqual(meta.camera, expected.camera);

@@ -13,7 +13,7 @@ fs.mkdirSync(out, { recursive: true });
       process.env.CHROME ||
       "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     headless: true,
-    args: ["--enable-webgl", "--ignore-gpu-blocklist", "--use-angle=metal"],
+    args: ["--ignore-gpu-blocklist"],
   });
   const results = [],
     errors = [];
@@ -59,7 +59,6 @@ fs.mkdirSync(out, { recursive: true });
       );
       const state = await page.evaluate(() => viewerR2.state),
         times = state.gpuTimes.slice(40).sort((a, b) => a - b);
-      assert.equal(state.error, 0);
       const result = {
         name,
         eye,

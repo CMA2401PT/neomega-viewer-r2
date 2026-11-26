@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"slices"
 	"syscall"
 	"time"
 )
@@ -117,11 +116,7 @@ func run() error {
 		}
 	} else {
 		fmt.Println("  本地    " + terminalText(colored, "1;97", url))
-		for _, ip := range lanAddresses(address.IP) {
-			fmt.Println(terminalText(colored, "38;5;245", fmt.Sprintf("  局域网  http://%s:%d", ip, address.Port)))
-		}
-		fmt.Println("\n  WebGPU 和 WebGL 都用显卡绘制世界。WebGPU 是 Viewer 的默认后端，可用于本地地址和 HTTPS。")
-		fmt.Println("  WebGL 是较早的浏览器图形接口，通过普通局域网 HTTP 地址访问时使用它。")
+		fmt.Println("\n  Viewer 使用 WebGPU 绘制世界。请在本机打开回环地址，跨设备访问请使用 HTTPS。")
 	}
 	select {
 	case err := <-done:
@@ -133,25 +128,4 @@ func run() error {
 	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return httpServer.Shutdown(shutdown)
-}
-
-// 只公布处于启用状态且有监听的 IPv4 网卡地址。
-func lanAddresses(bound net.IP) []string {
-	var ips []string
-	ifaces, _ := net.Interfaces()
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-		addrs, _ := iface.Addrs()
-		for _, addr := range addrs {
-			ip, _, err := net.ParseCIDR(addr.String())
-			if err != nil || ip.To4() == nil || ip.IsLoopback() || (!bound.IsUnspecified() && !bound.Equal(ip)) {
-				continue
-			}
-			ips = append(ips, ip.String())
-		}
-	}
-	slices.Sort(ips)
-	return slices.Compact(ips)
 }

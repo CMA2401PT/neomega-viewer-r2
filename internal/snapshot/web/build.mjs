@@ -30,7 +30,7 @@ for (const entry of defaultAssets.getEntries()) {
     resources[file] = gzipSync(entry.getData()).toString("base64");
   }
 }
-for (const file of readdirSync(join(dist,"render")).filter(name => name.endsWith(".wgsl") || name.endsWith(".frag"))) {
+for (const file of readdirSync(join(dist,"render")).filter(name => name.endsWith(".wgsl"))) {
   resources[file] = gzipSync(readFileSync(join(dist, "render", file))).toString("base64");
 }
 const shared = name => readFileSync(join(dist, "common_ui", name), "utf8");

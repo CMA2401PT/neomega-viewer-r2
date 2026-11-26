@@ -11,8 +11,6 @@ import { showWorldInfo, showConnection } from "./world-info.js";
 import { createPicker } from "./picker.js";
 import { startupStage } from "/r2/common_ui/startup.js";
 
-// Electron embeds this page at r2://app. The GLSL inspection tools explicitly request WebGL.
-const useWebGPU = isSecureContext && !!navigator.gpu && location.protocol !== "r2:" && new URLSearchParams(location.search).get("backend") !== "webgl";
 
 const canvas = element<HTMLCanvasElement>("view");
 const camera = { position: [0, 80, 0], yaw: -0.7, pitch: -0.32 };
@@ -145,10 +143,9 @@ async function openWorld(path: string, options: OpenOptions = {}, progress?: (va
 const showCompile: NonNullable<RendererOptions["onProgress"]> = ({ index, total, label }) =>
   startupStage(`${label}（${index}/${total}）`);
 await startupStage("正在初始化图形设备…");
-renderer = await createRenderer(canvas, { useWebGPU, tier: settings.tier, onProgress: showCompile });
+renderer = await createRenderer(canvas, { tier: settings.tier, onProgress: showCompile });
 await startupStage("正在准备场景…");
 const view = createView({
-  switchBackend: location.protocol !== "r2:",
   renderer, camera, settings,
   scene: () => ({ name: world.name, ocean: world.scene?.ocean, connection: world.connection }),
   onSettings: () => localStorage.setItem("neomega-r2-settings", JSON.stringify(settings)),
@@ -346,7 +343,6 @@ const viewerR2 = {
       stream: session?.stats,
       gpuTimes: renderer.times,
       frames: [...frames],
-      error: renderer.gl?.getError() ?? 0,
     };
   },
   /** 固定相机朝向，供像素回归与截图使用。 */

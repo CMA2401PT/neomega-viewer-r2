@@ -99,14 +99,10 @@ async function check(page, address) {
   const address = new URL(process.argv[2] || "http://127.0.0.1:2412");
   const browser = await chromium.launch({ channel: "chrome", executablePath: process.env.CHROME });
   try {
-    for (const backend of ["webgpu", "webgl"]) {
-      address.searchParams.set("backend", backend);
-      const page = await browser.newPage({ viewport: { width: 600, height: 420 } });
-      await check(page, address);
-      assert.equal(await page.evaluate(() => viewerR2.renderer.backend), backend);
-      await page.close();
-      console.log(backend, "昼夜速度、移动与静止、开关互斥和旧设置恢复通过");
-    }
+    const page = await browser.newPage({ viewport: { width: 600, height: 420 } });
+    await check(page, address);
+    await page.close();
+    console.log("昼夜速度、移动与静止、开关互斥和旧设置恢复通过");
   } finally {
     await browser.close();
   }

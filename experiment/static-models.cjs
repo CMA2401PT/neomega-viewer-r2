@@ -13,7 +13,7 @@ fs.mkdirSync(out, { recursive: true });
       process.env.CHROME ||
       "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     headless: true,
-    args: ["--enable-webgl", "--ignore-gpu-blocklist", "--use-angle=metal"],
+    args: ["--ignore-gpu-blocklist"],
   });
   const errors = [],
     result = {};
@@ -53,7 +53,6 @@ fs.mkdirSync(out, { recursive: true });
         null,
         { timeout: 60000 },
       );
-      assert.equal(await page.evaluate(() => viewerR2.state.error), 0);
     };
     const draw = async (fragments = true) =>
       page.evaluate(async (fragments) => {

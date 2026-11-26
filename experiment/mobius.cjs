@@ -1,4 +1,4 @@
-// 独立验证默认场景；Windows 默认验证本机后端，R2_ANGLE=gl 可验证兼容入口。
+// 验证默认场景的绘制、拍照和地图交互。
 const { chromium } = require(
   process.env.PLAYWRIGHT_MODULE ||
     (process.platform === "darwin"
@@ -19,10 +19,7 @@ fs.mkdirSync(out, { recursive: true });
         ? `${process.env.ProgramFiles}/Google/Chrome/Application/chrome.exe`
         : "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
     headless: true,
-    args: ["--enable-webgl", "--ignore-gpu-blocklist",
-      ...(process.env.R2_ANGLE ? [`--use-angle=${process.env.R2_ANGLE}`]
-        : process.platform === "darwin" ? ["--use-angle=metal"] : []),
-    ],
+    args: ["--ignore-gpu-blocklist"],
   });
   const result = { errors: [], shots: [], checks: [] };
   try {
@@ -34,7 +31,7 @@ fs.mkdirSync(out, { recursive: true });
       const page = await context.newPage();
       page.on("pageerror", (error) => result.errors.push(String(error)));
       page.on("console", (message) => {
-        if (/GL_INVALID|WebGL:.*INVALID/.test(message.text()))
+        if (/GPUValidationError|validation error/i.test(message.text()))
           result.errors.push(message.text());
       });
       await page.request.post(base + "/api/world/close");
@@ -58,7 +55,6 @@ fs.mkdirSync(out, { recursive: true });
           const s = viewerR2.state.stream;
           return s && s.loaded === s.wanted && !s.pending && !s.nearPending && !s.failed;
         }, null, { timeout: 120000 });
-        assert.equal(await page.evaluate(() => viewerR2.state.error), 0);
       };
       const shot = async (name) => {
         const path = `${out}/${width}x${height}-${name}.png`;

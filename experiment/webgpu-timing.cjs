@@ -69,7 +69,7 @@ async function main() {
   const browser = await chromium.launch({
     channel: "chrome",
     executablePath: process.env.CHROME,
-    args: process.platform === "darwin" ? ["--ignore-gpu-blocklist", "--use-angle=metal"] : [],
+    args: process.platform === "darwin" ? ["--ignore-gpu-blocklist"] : [],
   });
   const report = {
     platform: os.platform(), osRelease: os.release(), cpu: os.cpus()[0]?.model,
@@ -97,14 +97,12 @@ async function main() {
         const raf = requestAnimationFrame.bind(window);
         window.requestAnimationFrame = callback => callback.name === "frame" ? 0 : raf(callback);
       });
-      const address = new URL(url);
-      address.searchParams.set("backend", "webgpu");
-      await page.goto(address.href);
+      await page.goto(url);
       await page.waitForFunction(() => !!globalThis.viewerR2, null, { timeout: 120000 });
       const info = await page.evaluate(async () => {
         const { renderer, state } = globalThis.viewerR2;
         const adapter = await navigator.gpu.requestAdapter();
-        if (renderer.backend !== "webgpu" || !adapter?.features.has("timestamp-query"))
+        if (!adapter?.features.has("timestamp-query"))
           throw Error("需要能提供 GPU 时间戳的 WebGPU 设备");
         if (!state.world.loaded || state.world.scene) throw Error("请用 -world 打开测量存档");
         await renderer.compile("accumulation");

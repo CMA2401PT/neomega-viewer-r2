@@ -16,7 +16,7 @@ fs.mkdirSync(out + "/shots", { recursive: true });
       process.env.CHROME ||
       "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     headless: true,
-    args: ["--enable-webgl", "--ignore-gpu-blocklist", "--use-angle=metal"],
+    args: ["--ignore-gpu-blocklist"],
   });
   const result = { errors: [], shots: [], checks: [] };
   try {
@@ -31,7 +31,7 @@ fs.mkdirSync(out + "/shots", { recursive: true });
       const page = await context.newPage();
       page.on("pageerror", (error) => result.errors.push(String(error)));
       page.on("console", (message) => {
-        if (/GL_INVALID|WebGL:.*INVALID/.test(message.text()))
+        if (/GPUValidationError|validation error/i.test(message.text()))
           result.errors.push(message.text());
       });
       // 世界内容经 R2Link 到达：按类型统计收到与发出的消息。
@@ -74,7 +74,6 @@ fs.mkdirSync(out + "/shots", { recursive: true });
           null,
           { timeout: 120000 },
         );
-        assert.equal(await page.evaluate(() => viewerR2.state.error), 0);
       };
       await settled();
       await shot("mobius");
@@ -130,7 +129,6 @@ fs.mkdirSync(out + "/shots", { recursive: true });
             perspective,
             miss,
             accumulationPreserved: r.accumulated >= before,
-            error: viewerR2.state.error,
           };
         });
         assert.deepEqual(picks.ortho.position, [10, 2, 8]);
@@ -138,7 +136,6 @@ fs.mkdirSync(out + "/shots", { recursive: true });
         assert.deepEqual(picks.perspective.position, [10, 2, 8]);
         assert.deepEqual(picks.perspective.normal, [1, 0, 0]);
         assert.equal(picks.miss, null);
-        assert.equal(picks.error, 0);
         assert(picks.accumulationPreserved);
         result.checks.push({ picks });
         await change("resolution", "native-0.5");
@@ -285,7 +282,6 @@ fs.mkdirSync(out + "/shots", { recursive: true });
       );
       await page.keyboard.press("Escape");
       assert.deepEqual(await page.evaluate(() => viewerR2.state.camera), main);
-      assert.equal(await page.evaluate(() => viewerR2.state.error), 0);
       await page.setViewportSize({ width: 420, height: 800 });
       await page.waitForTimeout(100);
       // 竖屏也可以直接使用：底栏折成两行，坐标输入仍然可见。
