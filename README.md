@@ -164,7 +164,7 @@ go run ./examples/java-source -world /path/to/world
 | `neomega-converter-core/worldinput/` | 两个 viewer 共用的路径识别、结构准备、维度扫描、原生只读句柄与读取关闭屏障。   |
 | `internal/worldsource/`              | 将原生来源接到 Java 区块；为 Bedrock 组合转换器和可选 fixer。                  |
 | `internal/mobius/`                   | 海晶灯莫比乌斯环、开场取景与只读场景缓存。                                     |
-| `internal/worlddata/`                | Java 区块变成 R2Link 区域与近景对象，固定高度裁剪。                            |
+| `internal/worlddata/`                | Java 区块变成 R2Link 区域与近景 SNBT，固定高度裁剪。                            |
 | `internal/server/`                   | 来源会话、区域缓存、HTTP 接口与 `/r2link` 数据源。切换世界后断开并拒绝旧会话。 |
 | `examples/java-source/`              | 最小的外部 R2Link 数据源。                                                     |
 | `internal/filebrowse/`               | 服务端文件浏览与来源识别。                                     |
@@ -174,17 +174,15 @@ go run ./examples/java-source -world /path/to/world
 | `neomega-r2/r2-link`                    | 浏览器端 `R2Link` WebSocket 数据源客户端。                                     |
 | `neomega-r2/assets-utils`               | 生成默认材质包与合成信息包，并提供浏览器端材质解压与编译（`neomega-r2-materials`）。 |
 | `neomega-r2/r2-frontend`                | 单画布后处理合成管线（降噪、WebSR、深度叠加）与共享查看界面；Viewer 的 `make web` 负责装配网页，由服务端嵌入。 |
-| `neomega-r2link`                        | R2Link 协议、Go 数据源会话、effector 与 block actor。                          |
+| `neomega-r2link`                        | R2Link v3 协议、区域和近景方块实体订阅。                          |
 
 本应用通过 converter 组合 [fix-utils](https://github.com/CMA2401PT/neomega-r2/blob/main/fix-utils/README.md)。核心 neomega-r2 保持独立，通过数据源接收 Java 状态的方块哈希。远景与近景使用同一份来源索引，但 NBT 外观与特效仅由近景对象接口处理。
 
 ### 特殊对象的扩展位置
 
-Go 入口 `cmd/viewer/main.go` 选择需要启用的 effector 和 block actor 处理器。`internal/worlddata.World.Objects` 仅扫描近景中被处理器认领的方块，将状态、位置和 NBT 交给它们。浏览器入口 `web/app.ts` 注册对应类型的外观工厂。工厂返回部件、贴图、包围盒和动画，公共实例层负责格子候选与射线绘制。
+Go 按近景范围读取所有方块实体，并发送坐标和完整 SNBT。Java 与 Bedrock 来源各自保留原始实体字段。浏览器根据区域里的方块状态 hash 显示附魔书、陶罐四面纹样、旗面图案和双面告示牌；远处继续显示基础模型。
 
-附魔台的活动书已通过这条链路接入。block actor 的处理器和传输接口已连通，并通过携带 NBT 的测试处理器验证；旗帜图案、告示牌排版等具体实现尚未添加。详细契约和新增实现的方法见 [核心说明](https://github.com/CMA2401PT/neomega-r2/blob/main/r2-core/README.md#区域编码与活动对象)。含水方块暂只显示本体，不显示附加水层。
-
-区域池预留 256 MiB，缩小视距回收池内地址，切换场景时释放旧池，并为新来源重新建立池。远景半径超过 48 时，密集存档可能超出容量，此时会显示错误，可降低远景视距。文件会话按相机流式读取固定内容，查看磁盘上的外部修改需重新打开。
+主视图单击有方块实体的位置，会打开普通 HTML 面板显示该坐标的完整 SNBT，包括命令和容器内容。自定义外观、固定纹理和通用 SNBT 解析都在 [r2-frontend](https://github.com/CMA2401PT/neomega-r2/tree/main/r2-frontend/src)。含水方块暂只显示本体。
 
 ## 更换发布资源的版本
 

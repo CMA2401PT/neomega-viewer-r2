@@ -70,11 +70,11 @@ func (c *linkClient) receive(v any) r2link.Frame {
 }
 
 // want 发送一次订阅变化。
-func (c *linkClient) want(regions, removed []r2link.RegionPos, objects []r2link.ObjectWant) {
+func (c *linkClient) want(regions, removed []r2link.RegionPos, objects []r2link.BlockEntityWant) {
 	c.t.Helper()
 	var want r2link.Want
 	want.Type = "want"
-	want.Regions.Add, want.Regions.Remove, want.Objects.Add = regions, removed, objects
+	want.Regions.Add, want.Regions.Remove, want.BlockEntities.Add = regions, removed, objects
 	c.send(want)
 }
 

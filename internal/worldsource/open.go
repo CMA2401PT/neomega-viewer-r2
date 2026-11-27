@@ -3,6 +3,9 @@ package worldsource
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io/fs"
 	"neomega-converter-core/conversiondata"
 	fixer "neomega-view-utils/fixer/java-postprocess"
 
@@ -48,7 +51,7 @@ func (o Opener) Open(ctx context.Context, options Options) (*World, error) {
 			return nil, err
 		}
 		output.ScanChunks = input.Java.Chunks
-		output.ReadChunk = func(ctx context.Context, pos celler.ChunkPos) (*converter.JavaChunk, error) {
+		readJava := func(ctx context.Context, pos celler.ChunkPos) (*java.Chunk, error) {
 			records, err := input.Java.Read(ctx, pos)
 			if err != nil || records[0] == nil {
 				return nil, err
@@ -57,8 +60,19 @@ func (o Opener) Open(ctx context.Context, options Options) (*World, error) {
 			if err != nil {
 				return nil, err
 			}
-			chunk, err := java.DecodeChunk(raw, schema)
-			if err != nil {
+			return java.DecodeChunk(raw, schema)
+		}
+		output.ReadBlockEntities = func(ctx context.Context, pos celler.ChunkPos) ([]java.BlockEntity, error) {
+			chunk, err := readJava(ctx, pos)
+			if err != nil || chunk == nil {
+				return nil, err
+			}
+			entities, _, err := chunk.BlockEntities()
+			return entities, err
+		}
+		output.ReadChunk = func(ctx context.Context, pos celler.ChunkPos) (*converter.JavaChunk, error) {
+			chunk, err := readJava(ctx, pos)
+			if err != nil || chunk == nil {
 				return nil, err
 			}
 			ys, err := chunk.SectionYs()
@@ -73,11 +87,36 @@ func (o Opener) Open(ctx context.Context, options Options) (*World, error) {
 				}
 				result.Sections[y] = &converter.JavaSection{Blocks: section.Blocks}
 			}
-			result.BlockEntities, _, err = chunk.BlockEntities()
-			return result, err
+			return result, nil
 		}
 	} else {
 		reads := input.Bedrock
+		// 直接读取 Bedrock 方块实体，保留转换器未识别的字段及方块种类。
+		output.ReadBlockEntities = func(ctx context.Context, pos celler.ChunkPos) ([]java.BlockEntity, error) {
+			chunk, err := reads.Read(ctx, pos)
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil, nil
+			}
+			if err != nil || chunk == nil {
+				return nil, err
+			}
+			documents, err := chunk.BlockEntities()
+			if err != nil {
+				return nil, err
+			}
+			entities := make([]java.BlockEntity, 0, len(documents))
+			for _, document := range documents {
+				value := document.Value
+				x, xOK := value["x"].(int32)
+				y, yOK := value["y"].(int32)
+				z, zOK := value["z"].(int32)
+				if !xOK || !yOK || !zOK {
+					return nil, fmt.Errorf("区块 %v 的方块实体缺少整数坐标", pos)
+				}
+				entities = append(entities, java.BlockEntity{Pos: celler.BlockPos{X: x, Y: y, Z: z}, NBT: value})
+			}
+			return entities, nil
+		}
 		rules, err := o.Tables.BedrockToJavaChunk()
 		if err != nil {
 			input.Close()

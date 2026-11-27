@@ -6,7 +6,9 @@ import (
 	"celler/layer_storage"
 	"context"
 	"neomega-converter-core/worldinput"
+	nbt "neomega-nbt/presets/v1"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -28,6 +30,15 @@ func TestBedrockDimensionsAndFix(t *testing.T) {
 			layer.Blocks.Set(layer_storage.At(localX, 4, 8), bedrock.Block{State: "minecraft:oak_fence []", Version: 18168865})
 			if err := chunk.SetSection(&bedrock.Section{Y: dim, Version: 9, Layers: []*bedrock.Layer{layer}}); err != nil {
 				t.Fatal(err)
+			}
+			// 未注册实体携带转换器不认识的字段，近景仍须原样交付。
+			if x == 0 {
+				err := chunk.SetBlockEntities([]nbt.Document{{Value: nbt.Compound{
+					"id": "CustomEntity", "x": int32(15), "y": dim*16 + 4, "z": int32(8), "extra": int64(9007199254740993),
+				}}})
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 			if err := source.WriteChunk(chunk, nil); err != nil {
 				t.Fatal(err)
@@ -57,6 +68,10 @@ func TestBedrockDimensionsAndFix(t *testing.T) {
 			east, _ := state.States().Get("east")
 			if east != strconv.FormatBool(!skip) {
 				t.Fatalf("dimension=%d skip=%v: %s", dim, skip, state)
+			}
+			entities, err := world.BlockEntities(context.Background(), 0, 0, [3]int{0, int(dim), 0}, 1)
+			if err != nil || len(entities) != 1 || !strings.Contains(entities[0].SNBT, "9007199254740993l") || !strings.Contains(entities[0].SNBT, "CustomEntity") {
+				t.Fatal(entities, err)
 			}
 			if err := world.Close(); err != nil {
 				t.Fatal(err)

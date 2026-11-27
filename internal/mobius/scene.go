@@ -9,9 +9,6 @@ import (
 
 	"celler/layer_storage"
 	"neomega-r2link"
-	"neomega-r2link/blockactor"
-	"neomega-r2link/effector"
-	"neomega-r2link/object"
 )
 
 const (
@@ -105,16 +102,15 @@ func (w *World) Chunks(_ context.Context) (r2link.ChunkIndex, error) {
 	return w.data().chunks, nil
 }
 
-// Objects 返回空列表，因为海晶灯全部通过静态区域传输。
-func (w *World) Objects(
+// BlockEntities 返回空列表，因为海晶灯全部通过静态区域传输。
+func (w *World) BlockEntities(
 	_ context.Context,
 	_, _ int,
 	_ [3]int,
 	_ int,
-	_ effector.Registry,
-	_ blockactor.Registry,
-) ([]object.Descriptor, error) {
-	return []object.Descriptor{}, nil
+
+) ([]r2link.BlockEntity, error) {
+	return []r2link.BlockEntity{}, nil
 }
 
 // Close 保留共享场景数据，让之后的默认会话继续借用。

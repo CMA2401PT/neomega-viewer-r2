@@ -8,7 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"neomega-blocks/blockconv"
+	"neomega-viewer-r2/internal/worldsource"
 	"neomega-viewer-r2/resources"
 	"net/http"
 	"os"
@@ -16,9 +16,6 @@ import (
 	"syscall"
 	"time"
 
-	"celler"
-	"celler/java"
-	"celler/layer_storage"
 	"neomega-converter-core/worldinput"
 	r2link "neomega-r2link"
 )
@@ -36,21 +33,17 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	input, err := worldinput.Open(ctx, release.Tables.Schema, release.Tables.Structure, worldinput.Options{Path: *path, Dimension: *dimension})
+	opener := worldsource.Opener{Tables: release.Tables}
+	source, err := opener.Open(ctx, worldsource.Options{Options: worldinput.Options{Path: *path, Dimension: *dimension}, SkipBedrockFix: true})
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer input.Close()
-	if input.Java == nil {
+	defer source.Close()
+	if source.Input.Java == nil {
 		log.Fatal("java-source 使用 Java 世界或 PackFS")
 	}
-	schema, err := release.Tables.Schema()
-	if err != nil {
-		log.Fatal(err)
-	}
-	source := &javaSource{reader: input.Java, schema: schema}
-	spawn := r2link.Camera{Position: input.Info.Position}
-	options := r2link.Options{Scene: r2link.Scene{Name: input.Info.Name}, Camera: &spawn}
+	spawn := r2link.Camera{Position: source.Input.Info.Position}
+	options := r2link.Options{Scene: r2link.Scene{Name: source.Input.Info.Name}, Camera: &spawn}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/r2link", func(w http.ResponseWriter, r *http.Request) {
@@ -86,79 +79,4 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && ctx.Err() == nil {
 		log.Fatal(err)
 	}
-}
-
-// javaSource 实现 r2link.Source 与 r2link.ChunkSource；不提供近景对象。
-type javaSource struct {
-	schema blockconv.Schema
-	reader *worldinput.JavaReader
-}
-
-// Region 读取r2region 内的 8×8 个区块，把每个子区块 的方块状态换成哈希后打包。
-// 查看器只显示 Y -64～447，范围外的子区块 计入 Clipped。
-func (s *javaSource) Region(ctx context.Context, rx, rz int) (r2link.R2Region, error) {
-	var region r2link.R2Region
-	for x := rx * 8; x < rx*8+8; x++ {
-		for z := rz * 8; z < rz*8+8; z++ {
-			chunk, err := s.read(ctx, celler.ChunkPos{X: int32(x), Z: int32(z)})
-			if err != nil || chunk == nil {
-				if err != nil {
-					return region, err
-				}
-				continue
-			}
-			ys, err := chunk.SectionYs()
-			if err != nil {
-				return region, err
-			}
-			for _, y := range ys {
-				section, err := chunk.Section(y)
-				if err != nil {
-					return region, err
-				}
-				if section.Blocks == nil {
-					continue
-				}
-				if y < -4 || y >= 28 {
-					region.Clipped++
-					continue
-				}
-				var blocks [4096]uint32
-				air := true
-				for i := range blocks {
-					blocks[i] = r2link.BlockHash(section.Blocks.Get(layer_storage.At(i>>8, i&15, (i>>4)&15)))
-					air = air && r2link.IsAir(blocks[i])
-				}
-				if !air {
-					region.Sections = append(region.Sections, r2link.Pack([3]int{x, int(y), z}, &blocks))
-				}
-			}
-		}
-	}
-	return region, ctx.Err()
-}
-
-func (s *javaSource) read(ctx context.Context, pos celler.ChunkPos) (*java.Chunk, error) {
-	records, err := s.reader.Read(ctx, pos)
-	if err != nil || records[0] == nil {
-		return nil, err
-	}
-	raw, err := records[0].Decode()
-	if err != nil {
-		return nil, err
-	}
-	return java.DecodeChunk(raw, s.schema)
-}
-
-// Chunks 给地图提供区块占用表。
-func (s *javaSource) Chunks(ctx context.Context) (r2link.ChunkIndex, error) {
-	positions, err := s.reader.Chunks(ctx)
-	if err != nil {
-		return nil, err
-	}
-	index := r2link.ChunkIndex{}
-	for _, pos := range positions {
-		index.Add(int(pos.X), int(pos.Z))
-	}
-	return index, nil
 }

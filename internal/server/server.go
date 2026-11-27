@@ -1,4 +1,4 @@
-// Package server 管理存档会话与 HTTP；核心资源、来源和特殊对象处理器由应用组装。
+// Package server 管理存档会话与 HTTP；每个连接按订阅读取静态区域和近景方块实体。
 package server
 
 import (
@@ -13,9 +13,6 @@ import (
 	"neomega-converter-core/structure"
 	"neomega-converter-core/worldinput"
 	"neomega-r2link"
-	"neomega-r2link/blockactor"
-	"neomega-r2link/effector"
-	"neomega-r2link/object"
 	"neomega-view-utils/r2assets"
 	"neomega-viewer-r2/internal/filebrowse"
 	"neomega-viewer-r2/internal/mobius"
@@ -59,7 +56,7 @@ type OpenOptions struct {
 type worldSource interface {
 	Region(context.Context, int, int) (r2link.R2Region, error)
 	Chunks(context.Context) (r2link.ChunkIndex, error)
-	Objects(context.Context, int, int, [3]int, int, effector.Registry, blockactor.Registry) ([]object.Descriptor, error)
+	BlockEntities(context.Context, int, int, [3]int, int) ([]r2link.BlockEntity, error)
 	Close() error
 }
 
@@ -102,19 +99,15 @@ type Server struct {
 	builtin  *mobius.World
 	revision uint64
 	workers  chan struct{}
-	Effects  effector.Registry
-	Actors   blockactor.Registry
 }
 
-// New 使用入口配好的世界读取器、特效和方块实体处理器创建查看会话。
-func New(worlds worldsource.Opener, effects effector.Registry, actors blockactor.Registry) *Server {
+// New 使用入口配好的世界读取器创建查看会话。
+func New(worlds worldsource.Opener) *Server {
 	s := &Server{
 		worlds:  worlds,
 		Options: worldsource.Options{Options: worldinput.Options{Structure: structure.Options{MemoryMiB: 512}}},
 		builtin: mobius.New(),
 		workers: make(chan struct{}, 4),
-		Effects: effects,
-		Actors:  actors,
 	}
 	s.Close()
 	return s
@@ -386,16 +379,16 @@ func (l *linkSource) Region(ctx context.Context, x, z int) (region r2link.R2Regi
 	return region, err
 }
 
-// Objects 调用应用注册的特效与方块实体处理器。
-func (l *linkSource) Objects(ctx context.Context, x, z int, center [3]int, radius int) (objects []object.Descriptor, err error) {
+// BlockEntities 读取这个近景范围的原始方块实体。
+func (l *linkSource) BlockEntities(ctx context.Context, x, z int, center [3]int, radius int) (entities []r2link.BlockEntity, err error) {
 	if radius < 1 || radius > 16 {
 		return nil, fmt.Errorf("近景视距应为 1～16 区块")
 	}
 	err = l.read(ctx, func() error {
-		objects, err = l.session.source.Objects(ctx, x, z, center, radius, l.server.Effects, l.server.Actors)
+		entities, err = l.session.source.BlockEntities(ctx, x, z, center, radius)
 		return err
 	})
-	return objects, err
+	return entities, err
 }
 
 // Chunks 的会话缓存独立于区域 LRU，地图在同一会话内只需扫描一次占用表。

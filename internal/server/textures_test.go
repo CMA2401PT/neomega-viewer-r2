@@ -61,7 +61,7 @@ func TestTextureEncoding(t *testing.T) {
 
 // 载入自选材质时，浏览器应能通过原 URL 请求到本应用配套的合成信息。
 func TestMaterialRecipeURL(t *testing.T) {
-	service := New(testWorlds(t), nil, nil)
+	service := New(testWorlds(t))
 	defer service.Close()
 	handler := service.Handler(fstest.MapFS{}, testBrowser(t))
 	response := httptest.NewRecorder()

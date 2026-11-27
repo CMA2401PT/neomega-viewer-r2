@@ -1,4 +1,4 @@
-// Package worlddata 把存档读出的 Java 区块组织为 r2region，并提供近景对象。
+// Package worlddata 把存档读出的 Java 区块组织为 r2region，并提供近景方块实体。
 package worlddata
 
 import (
@@ -7,14 +7,16 @@ import (
 	"slices"
 
 	"celler"
+	"celler/java"
 	converter "neomega-converter-core"
 	"neomega-r2link"
 )
 
-// World 将不同来源的 Java 区块变成同一种区域，保持压缩索引和近景对象共用状态。
+// World 将不同来源的 Java 区块变成同一种区域，保持压缩索引和近景方块实体共用状态。
 type World struct {
-	ReadChunk  func(context.Context, celler.ChunkPos) (*converter.JavaChunk, error)
-	ScanChunks func(context.Context) ([]celler.ChunkPos, error)
+	ReadBlockEntities func(context.Context, celler.ChunkPos) ([]java.BlockEntity, error)
+	ReadChunk         func(context.Context, celler.ChunkPos) (*converter.JavaChunk, error)
+	ScanChunks        func(context.Context) ([]celler.ChunkPos, error)
 }
 
 // visible 判断子区块的高度索引是否落在可显示范围内：Y -64～447。

@@ -22,23 +22,7 @@ import (
 	"neomega-blocks/ir"
 	nbt "neomega-nbt/presets/v1"
 	"neomega-r2link"
-	"neomega-r2link/blockactor"
-	"neomega-r2link/effector"
-	"neomega-r2link/object"
 )
-
-// 测试处理器证明 NBT 会到达扩展入口，而远景区域完全不调用它。
-type testActor struct {
-	calls int
-	text  string
-}
-
-func (a *testActor) BlockNames() []string { return []string{"minecraft:stone"} }
-func (a *testActor) Build(input blockactor.Input) ([]object.Descriptor, error) {
-	a.calls++
-	a.text = input.NBT["test_text"].(string)
-	return []object.Descriptor{{Key: "test-actor", Kind: "test_panel", Position: [3]float64{1, 2, 3}, Replace: true}}, nil
-}
 
 func TestSessionAndNearObjectBoundary(t *testing.T) {
 	path := t.TempDir()
@@ -66,13 +50,7 @@ func TestSessionAndNearObjectBoundary(t *testing.T) {
 	if err = source.Close(); err != nil {
 		t.Fatal(err)
 	}
-	actor := &testActor{}
-	actors := blockactor.Registry{}
-	actors.Register(actor)
-	service := New(testWorlds(t),
-		effector.Registry{"minecraft:enchanting_table": effector.Kind("enchanting_book")},
-		actors,
-	)
+	service := New(testWorlds(t))
 	defer service.Close()
 	handler := service.Handler(fstest.MapFS{"index.html": {Data: []byte("场景页面")}}, testBrowser(t))
 	server := httptest.NewServer(handler)
@@ -134,24 +112,21 @@ func TestSessionAndNearObjectBoundary(t *testing.T) {
 	if !bytes.Equal(first, region()) {
 		t.Fatal("区域缓存改变了数据")
 	}
-	if actor.calls != 0 {
-		t.Fatal("远景调用了 NBT 外观处理器")
-	}
-	objects := func(center [3]int) []object.Descriptor {
+	objects := func(center [3]int) []r2link.BlockEntity {
 		t.Helper()
-		client.want(nil, nil, []r2link.ObjectWant{{Center: center, Radius: 8}})
-		var reply r2link.Objects
+		client.want(nil, nil, []r2link.BlockEntityWant{{Center: center, Radius: 8}})
+		var reply r2link.BlockEntities
 		client.receive(&reply)
-		if reply.Type != "objects" || reply.X != 0 || reply.Z != 0 {
+		if reply.Type != "blockEntities" || reply.X != 0 || reply.Z != 0 {
 			t.Fatalf("对象回复 %+v", reply)
 		}
-		return reply.Descriptors
+		return reply.Entries
 	}
-	if near := objects([3]int{}); len(near) != 2 || actor.calls != 1 || actor.text != "牌面内容" {
-		t.Fatalf("近景扩展失败：%+v %+v", near, actor)
+	if near := objects([3]int{}); len(near) != 1 || near[0].Position != [3]int{1, 2, 3} || !strings.Contains(near[0].SNBT, "牌面内容") {
+		t.Fatalf("近景实体错误：%+v", near)
 	}
-	if far := objects([3]int{100, 0, 0}); len(far) != 0 || actor.calls != 1 {
-		t.Fatal("近景范围外仍生成了特殊对象")
+	if far := objects([3]int{100, 0, 0}); len(far) != 0 {
+		t.Fatal("近景范围外仍生成了方块实体")
 	}
 	// 关闭存档断开旧连接，旧编号不能再连接。
 	request("POST", "/api/world/close", "")
@@ -205,7 +180,7 @@ func TestWorldChunks(t *testing.T) {
 	if err = source.Close(); err != nil {
 		t.Fatal(err)
 	}
-	service := New(testWorlds(t), nil, nil)
+	service := New(testWorlds(t))
 	defer service.Close()
 	info, err := service.Open(context.Background(), OpenOptions{Path: path})
 	if err != nil {
@@ -271,7 +246,7 @@ func TestWorldChunks(t *testing.T) {
 
 // 内置场景与存档走同一条 R2Link 路径，关闭后只更换会话编号，不改变场景内容。
 func TestMobiusSession(t *testing.T) {
-	service := New(testWorlds(t), nil, nil)
+	service := New(testWorlds(t))
 	defer service.Close()
 	handler := service.Handler(fstest.MapFS{}, testBrowser(t))
 	server := httptest.NewServer(handler)
@@ -373,9 +348,9 @@ func TestMobiusSession(t *testing.T) {
 	if lanterns < 1000 {
 		t.Fatalf("环没有完整生成：%d 格", lanterns)
 	}
-	client.want(nil, nil, []r2link.ObjectWant{{Center: [3]int{0, 4, 0}, Radius: 8}})
-	var objects r2link.Objects
-	if client.receive(&objects); objects.Type != "objects" || len(objects.Descriptors) != 0 {
+	client.want(nil, nil, []r2link.BlockEntityWant{{Center: [3]int{0, 4, 0}, Radius: 8}})
+	var objects r2link.BlockEntities
+	if client.receive(&objects); objects.Type != "blockEntities" || len(objects.Entries) != 0 {
 		t.Fatal("内置场景应只有静态方块")
 	}
 	service.Close()

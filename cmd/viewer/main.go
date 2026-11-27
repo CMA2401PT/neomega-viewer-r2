@@ -7,8 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"neomega-converter-core/structure"
-	"neomega-r2link/blockactor"
-	"neomega-r2link/effector"
+
 	app "neomega-viewer-r2"
 	"neomega-viewer-r2/internal/server"
 	"neomega-viewer-r2/internal/snapshot"
@@ -75,12 +74,7 @@ func run() error {
 	}
 	colored := terminalColors()
 	printBanner(os.Stdout, version, colored)
-	// 新的特效和 NBT 方块处理器在这里显式组装，核心不决定应用启用哪些内容。
-	service := server.New(
-		worlds,
-		effector.Registry{"minecraft:enchanting_table": effector.Kind("enchanting_book")},
-		blockactor.Registry{},
-	)
+	service := server.New(worlds)
 	service.Options.SkipBedrockFix = !*bedrockFix
 	service.Options.Structure = structure.Options{MemoryMiB: *structureMemory, Workers: *structureWorkers}
 	defer service.Close()

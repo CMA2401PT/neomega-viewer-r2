@@ -1,15 +1,14 @@
 // 应用组装存档会话、飞行/地图视图与同一射线帧循环；UI 事件和投影分别放在独立模块。
 import {
   createRenderer,
-  enchantingBook,
-  ObjectRegistry,
-  WorldSession,
+  type WorldSession,
   type Renderer,
   type RendererOptions,
   type TextureSet,
 } from "/r2/r2-core.js";
 import { r2linkSource, type R2LinkSource } from "/r2/r2-link.js";
 import {
+  blockWorldSession,
   closePopovers,
   createStartup,
   createView,
@@ -51,9 +50,6 @@ try {
     ...savedSettings,
   };
   if (!["voxel", "basic", "shading"].includes(settings.tier)) settings.tier = "shading";
-  const registry = new ObjectRegistry().register("enchanting_book", () =>
-    enchantingBook("/r2/assets/book.png"),
-  );
   let renderer: Renderer;
   let activeTextures: TextureSet | undefined;
   let exporting: AbortController | null = null;
@@ -125,8 +121,7 @@ try {
       settings.time = info.scene?.time ?? 10;
       hud.settings();
     }
-    session = new WorldSession(renderer, current, {
-      registry,
+    session = blockWorldSession(renderer, current, {
       onError: (message) => hud.error(message),
     });
     session.focus(camera.position, settings);
