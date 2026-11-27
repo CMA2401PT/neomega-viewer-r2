@@ -392,7 +392,7 @@ func (l *linkSource) BlockEntities(ctx context.Context, x, z int, center [3]int,
 }
 
 // Entities 复用当前世界的读取生命周期，内置纯方块场景返回空快照。
-func (l *linkSource) Entities(ctx context.Context, x, z int, center [3]int, radius int) (entries []string, err error) {
+func (l *linkSource) Entities(ctx context.Context, x, z int, center [3]int, radius int) (entries []r2link.Entity, err error) {
 	err = l.read(ctx, func() error {
 		if provider, ok := l.session.source.(r2link.EntitySource); ok {
 			entries, err = provider.Entities(ctx, x, z, center, radius)

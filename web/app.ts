@@ -1,17 +1,16 @@
 // 应用组装存档会话、飞行/地图视图与同一射线帧循环；UI 事件和投影分别放在独立模块。
 import {
   createRenderer,
-  type WorldSession,
   type Renderer,
   type RendererOptions,
   type TextureSet,
 } from "/r2/r2-core.js";
 import { r2linkSource, type R2LinkSource } from "/r2/r2-link.js";
 import {
-  blockWorldSession,
   closePopovers,
   createStartup,
   createView,
+  createViewerWorld,
   element,
   materialControls,
   mountLayout,
@@ -55,7 +54,7 @@ try {
   let exporting: AbortController | null = null;
   const exportButton = element<HTMLButtonElement>("export-html");
   const exportStatus = element("export-status");
-  let session: WorldSession | null = null;
+  let displayed: ReturnType<typeof createViewerWorld> | null = null;
   let source: R2LinkSource | null = null;
   // 外部来源握手期间不跟随本机世界的断开。
   let connecting = false;
@@ -99,8 +98,8 @@ try {
     await view.cancelPhoto();
     // 离开开场场景或直接载入外部来源时从白天开始；来源之间切换保留当前时间。
     const startDaytime = !info.scene && (!world.loaded || !!world.scene);
-    const old = session;
-    session = source = null;
+    const old = displayed?.session;
+    displayed = source = null;
     old?.dispose();
     world = info;
     closePopovers();
@@ -121,10 +120,10 @@ try {
       settings.time = info.scene?.time ?? 10;
       hud.settings();
     }
-    session = blockWorldSession(renderer, current, {
+    displayed = createViewerWorld(renderer, current, {
       onError: (message) => hud.error(message),
     });
-    session.focus(camera.position, settings);
+    displayed.session.focus(camera.position, settings);
     exportButton.disabled = !!exporting;
   }
   /** 目录选择器共用的存档打开操作。 */
@@ -301,7 +300,7 @@ try {
   let savedMaterial = await loadMaterial().catch(() => null);
   const materials = materialControls(element("material-controls"), async (set, input, limit) => {
     const applied = worldQueue.then(async () => {
-      if (session) await session.setTextures(set);
+      if (displayed) await displayed.session.setTextures(set);
       else renderer.setTextures(set);
       activeTextures = set;
     });
@@ -333,7 +332,7 @@ try {
 
   function frame(now: number) {
     requestAnimationFrame(frame);
-    view.frame(now, session);
+    view.frame(now, displayed);
   }
 
   if (savedMaterial || settings.textureSize !== 128) {
@@ -345,7 +344,7 @@ try {
   window.addEventListener("pagehide", () => {
     materials.dispose();
     view.dispose();
-    session?.dispose();
+    displayed?.session.dispose();
     renderer.dispose();
   });
   requestAnimationFrame(frame);

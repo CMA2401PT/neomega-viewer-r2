@@ -50,10 +50,10 @@ const main = (await build({
   }],
 })).outputFiles[0].text;
 
-const uiDir = join(r2Root, "r2-frontend/src/ui");
-const styleCSS = readFileSync(join(uiDir, "style.css"), "utf8");
+const layoutDir = join(r2Root, "r2-frontend/src/ui/layout");
+const styleCSS = readFileSync(join(layoutDir, "style.css"), "utf8");
 const actions = '<select id="export-dimension" aria-label="维度" hidden></select>';
-const layout = readFileSync(join(uiDir, "layout.html"), "utf8")
+const layout = readFileSync(join(layoutDir, "layout.html"), "utf8")
   .replace('<slot name="actions"></slot>', actions)
   .replace(/<slot name="[^"]+"><\/slot>/g, "");
 

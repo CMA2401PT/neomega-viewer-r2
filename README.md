@@ -173,8 +173,9 @@ go run ./examples/java-source -world /path/to/world
 | `neomega-r2/r2-core`                    | 纯离屏 WebGPU 射线渲染核心（RGB/Depth 输出、拾取）、世界会话与 `MemoryWorld`。 |
 | `neomega-r2/r2-link`                    | 浏览器端 `R2Link` WebSocket 数据源客户端。                                     |
 | `neomega-r2/assets-utils`               | 生成默认材质包与合成信息包，并提供浏览器端材质解压与编译（`neomega-r2-materials`）。 |
+| `neomega-r2/r2-mc` | Java 方块和实体外观、随包素材与实例拾取。 |
 | `neomega-r2/r2-frontend`                | 单画布后处理合成管线（降噪、WebSR、深度叠加）与共享查看界面；Viewer 的 `make web` 负责装配网页，由服务端嵌入。 |
-| `neomega-r2link`                        | R2Link v3 协议、区域和近景方块实体订阅。                          |
+| `neomega-r2link`                        | R2Link v4 协议、区域和近景方块实体订阅。                          |
 
 本应用通过 converter 组合 [fix-utils](https://github.com/CMA2401PT/neomega-r2/blob/main/fix-utils/README.md)。核心 neomega-r2 保持独立，通过数据源接收 Java 状态的方块哈希。远景与近景使用同一份来源索引，但 NBT 外观与特效仅由近景对象接口处理。
 
@@ -182,7 +183,7 @@ go run ./examples/java-source -world /path/to/world
 
 Go 按近景范围读取所有方块实体，并发送坐标和完整 SNBT。Java 与 Bedrock 来源各自保留原始实体字段。浏览器根据区域里的方块状态 hash 显示附魔书、陶罐四面纹样、旗面图案和双面告示牌；远处继续显示基础模型。
 
-主视图单击有方块实体的位置，会打开普通 HTML 面板显示该坐标的完整 SNBT，包括命令和容器内容。自定义外观、固定纹理和通用 SNBT 解析都在 [r2-frontend](https://github.com/CMA2401PT/neomega-r2/tree/main/r2-frontend/src)。含水方块暂只显示本体。
+主视图单击有方块实体的位置，会打开普通 HTML 面板显示该坐标的完整 SNBT，包括命令和容器内容。自定义外观、固定纹理和通用 SNBT 解析都在 [r2-mc](https://github.com/CMA2401PT/neomega-r2/tree/main/r2-mc/src)。含水方块暂只显示本体。
 
 ## 更换发布资源的版本
 
