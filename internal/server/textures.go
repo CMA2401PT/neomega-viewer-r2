@@ -33,14 +33,14 @@ func acceptsGzip(encoding string) bool {
 }
 
 // 默认资源复用编译时的压缩数据。按范围读取时使用原文件的字节位置。
-func assetHandler() http.Handler {
-	assets, _ := fs.Sub(r2assets.Files, "assets")
+func assetHandler(archive *r2assets.Archive) http.Handler {
+	assets, _ := fs.Sub(archive, "assets")
 	plain := http.FileServerFS(assets)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Vary", "Accept-Encoding")
 		name := strings.TrimPrefix(r.URL.Path, "/")
 		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.Header.Get("Range") == "" && acceptsGzip(r.Header.Get("Accept-Encoding")) {
-			body, length, err := r2assets.Files.OpenGzip("assets/" + name)
+			body, length, err := archive.OpenGzip("assets/" + name)
 			if err == nil {
 				contentType := mime.TypeByExtension(path.Ext(name))
 				if contentType == "" {

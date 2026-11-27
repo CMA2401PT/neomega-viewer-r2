@@ -318,7 +318,14 @@ try {
       savedMaterial = input;
     }
     view.refreshSettings();
-  }, { recipeURL: "/r2/material-info.zip", initialLimit: settings.textureSize });
+  }, {
+    initialLimit: settings.textureSize,
+    async loadRecipe(signal) {
+      const response = await fetch("/r2/material-info.zip", { signal });
+      if (!response.ok) throw Error("材质配方加载失败：" + response.status);
+      return new Uint8Array(await response.arrayBuffer());
+    },
+  });
 
   function updateViewerStatus({ stats, median }: ViewStats) {
     if (view.debugStatus.checkVisibility()) {

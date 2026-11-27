@@ -2,22 +2,25 @@
 package server
 
 import (
+	"bytes"
 	"container/list"
 	"context"
+
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
 	"neomega-converter-core/structure"
 	"neomega-converter-core/worldinput"
-	r2frontend "neomega-r2-frontend"
 	"neomega-r2link"
 	"neomega-r2link/blockactor"
 	"neomega-r2link/effector"
 	"neomega-r2link/object"
+	"neomega-view-utils/r2assets"
 	"neomega-viewer-r2/internal/filebrowse"
 	"neomega-viewer-r2/internal/mobius"
-	"neomega-viewer-r2/internal/snapshot"
+	"time"
+
 	"neomega-viewer-r2/internal/worldsource"
 	"net/http"
 	"strconv"
@@ -91,6 +94,7 @@ func newSession(info Info, source worldSource) *session {
 
 // Server 串行切换来源，并限制区域读取的并发量。
 type Server struct {
+	worlds   worldsource.Opener
 	Options  worldsource.Options
 	mu       sync.RWMutex
 	openMu   sync.Mutex
@@ -102,9 +106,10 @@ type Server struct {
 	Actors   blockactor.Registry
 }
 
-// New 接收应用启用的特效与方块实体处理器。
-func New(effects effector.Registry, actors blockactor.Registry) *Server {
+// New 使用入口配好的世界读取器、特效和方块实体处理器创建查看会话。
+func New(worlds worldsource.Opener, effects effector.Registry, actors blockactor.Registry) *Server {
 	s := &Server{
+		worlds:  worlds,
 		Options: worldsource.Options{Options: worldinput.Options{Structure: structure.Options{MemoryMiB: 512}}},
 		builtin: mobius.New(),
 		workers: make(chan struct{}, 4),
@@ -133,7 +138,7 @@ func (s *Server) Open(ctx context.Context, request OpenOptions) (Info, error) {
 	if request.StructureWorkers != nil {
 		options.Structure.Workers = *request.StructureWorkers
 	}
-	source, err := worldsource.Open(ctx, options)
+	source, err := s.worlds.Open(ctx, options)
 	if err != nil {
 		return Info{}, err
 	}
@@ -223,15 +228,26 @@ func queryInt(r *http.Request, name string) (int, error) {
 	return strconv.Atoi(r.URL.Query().Get(name))
 }
 
-// Handler 让内置场景与文件来源使用相同接口，并提供公共渲染资源。
-func (s *Server) Handler(web fs.FS) http.Handler {
+// BrowserFiles 提供宿主选择的默认材质、重建材质所用的配方和离线导出模板。
+type BrowserFiles struct {
+	Modules        fs.FS
+	Materials      *r2assets.Archive
+	Recipe         []byte
+	ExportTemplate string
+}
+
+// Handler 使用宿主给出的前端模块和材质服务内置场景及存档。
+func (s *Server) Handler(web fs.FS, browser BrowserFiles) http.Handler {
 	mux := http.NewServeMux()
-	core, _ := fs.Sub(r2frontend.Files, "dist/web")
-	mux.Handle("/r2/assets/", http.StripPrefix("/r2/assets/", assetHandler()))
-	mux.Handle("/r2/", http.StripPrefix("/r2/", http.FileServerFS(core)))
+
+	mux.HandleFunc("GET /r2/material-info.zip", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeContent(w, r, "material-info.zip", time.Time{}, bytes.NewReader(browser.Recipe))
+	})
+	mux.Handle("/r2/assets/", http.StripPrefix("/r2/assets/", assetHandler(browser.Materials)))
+	mux.Handle("/r2/", http.StripPrefix("/r2/", http.FileServerFS(browser.Modules)))
 	mux.HandleFunc("GET /api/export/template", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		io.WriteString(w, snapshot.Template())
+		io.WriteString(w, browser.ExportTemplate)
 	})
 	mux.HandleFunc("GET /api/world", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, s.Info()) })
 	mux.HandleFunc("POST /api/world/open", func(w http.ResponseWriter, r *http.Request) {

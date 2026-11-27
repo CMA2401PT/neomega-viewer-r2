@@ -40,6 +40,7 @@ $(NPM_LOCK): $(R2)/package-lock.json
 
 web: $(NPM_LOCK)
 	npm run build --prefix "$(R2)"
+	node "$(R2)/scripts/release-browser/assemble.mjs" web web/dist/r2
 	node "$(TSC)" -p web
 	node "$(TSC)" -p internal/snapshot/web
 	node internal/snapshot/web/build.mjs

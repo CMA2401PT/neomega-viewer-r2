@@ -27,9 +27,9 @@ func TestStreamingStructureOpen(t *testing.T) {
 	if err := os.WriteFile(path, raw, 0644); err != nil {
 		t.Fatal(err)
 	}
-	server := New(nil, nil)
+	server := New(testWorlds(t), nil, nil)
 	defer server.Close()
-	handler := server.Handler(fstest.MapFS{})
+	handler := server.Handler(fstest.MapFS{}, testBrowser(t))
 	outputRoot := filepath.Join(t.TempDir(), "converted")
 	for _, memory := range []int{32, 64} {
 		before := server.Info().ID

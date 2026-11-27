@@ -7,15 +7,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"neomega-view-utils/r2assets"
+	"testing/fstest"
 )
 
 // 校验浏览器自动解压后的字节，同时覆盖显式禁用 gzip 和按范围读取原文件。
 func TestTextureEncoding(t *testing.T) {
-	assets := assetHandler()
+	bundle := testBrowser(t)
+	assets := assetHandler(bundle.Materials)
 	name := "fast.bin"
-	original, err := r2assets.Files.ReadFile("assets/" + name)
+	original, err := bundle.Materials.ReadFile("assets/" + name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,5 +56,18 @@ func TestTextureEncoding(t *testing.T) {
 		if !bytes.Equal(got, want) {
 			t.Fatalf("资源传输改变了 %s 的内容", name)
 		}
+	}
+}
+
+// 载入自选材质时，浏览器应能通过原 URL 请求到本应用配套的合成信息。
+func TestMaterialRecipeURL(t *testing.T) {
+	service := New(testWorlds(t), nil, nil)
+	defer service.Close()
+	handler := service.Handler(fstest.MapFS{}, testBrowser(t))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/r2/material-info.zip", nil))
+	want := testBrowser(t).Recipe
+	if response.Code != http.StatusOK || !bytes.Equal(response.Body.Bytes(), want) {
+		t.Fatal("未返回应用提供的材质合成信息包", response.Code)
 	}
 }

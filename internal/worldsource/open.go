@@ -3,7 +3,8 @@ package worldsource
 
 import (
 	"context"
-	"sync"
+	"neomega-converter-core/conversiondata"
+	fixer "neomega-view-utils/fixer/java-postprocess"
 
 	"celler"
 	"celler/java"
@@ -11,11 +12,15 @@ import (
 	"neomega-converter-core/be2je/adapt"
 	"neomega-converter-core/worldinput"
 	fixedadapt "neomega-converter/adapt"
-	"neomega-view-utils/fixer/java-postprocess"
+
 	"neomega-viewer-r2/internal/worlddata"
 )
 
-var sharedFixer = sync.OnceValues(fixer.New)
+// Opener 在同一组发布资源上打开不同存档，按输入格式取用转换表或修复器。
+type Opener struct {
+	Tables *conversiondata.Loader
+	Fixer  func() (*fixer.Fixer, error)
+}
 
 // Options 把原生打开选项和显示用的邻接修复分开，Java 状态不经过 Bedrock 修复。
 type Options struct {
@@ -30,13 +35,18 @@ type World struct {
 }
 
 // Open 在发布会话前完成原生打开与修复器准备，失败时保留调用方的旧世界。
-func Open(ctx context.Context, options Options) (*World, error) {
-	input, err := worldinput.Open(ctx, options.Options)
+func (o Opener) Open(ctx context.Context, options Options) (*World, error) {
+	input, err := worldinput.Open(ctx, o.Tables.Schema, o.Tables.Structure, options.Options)
 	if err != nil {
 		return nil, err
 	}
 	output := &worlddata.World{}
 	if input.Java != nil {
+		schema, err := o.Tables.Schema()
+		if err != nil {
+			input.Close()
+			return nil, err
+		}
 		output.ScanChunks = input.Java.Chunks
 		output.ReadChunk = func(ctx context.Context, pos celler.ChunkPos) (*converter.JavaChunk, error) {
 			records, err := input.Java.Read(ctx, pos)
@@ -47,7 +57,7 @@ func Open(ctx context.Context, options Options) (*World, error) {
 			if err != nil {
 				return nil, err
 			}
-			chunk, err := java.DecodeChunk(raw)
+			chunk, err := java.DecodeChunk(raw, schema)
 			if err != nil {
 				return nil, err
 			}
@@ -68,10 +78,15 @@ func Open(ctx context.Context, options Options) (*World, error) {
 		}
 	} else {
 		reads := input.Bedrock
-		converted := adapt.NewConverted(reads.Read, adapt.Options{})
+		rules, err := o.Tables.BedrockToJavaChunk()
+		if err != nil {
+			input.Close()
+			return nil, err
+		}
+		converted := adapt.NewConverted(rules, reads.Read, adapt.Options{})
 		var chunks adapt.ChunkSource = converted
 		if !options.SkipBedrockFix {
-			f, err := sharedFixer()
+			f, err := o.Fixer()
 			if err != nil {
 				input.Close()
 				return nil, err

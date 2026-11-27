@@ -69,12 +69,12 @@ func TestSessionAndNearObjectBoundary(t *testing.T) {
 	actor := &testActor{}
 	actors := blockactor.Registry{}
 	actors.Register(actor)
-	service := New(
+	service := New(testWorlds(t),
 		effector.Registry{"minecraft:enchanting_table": effector.Kind("enchanting_book")},
 		actors,
 	)
 	defer service.Close()
-	handler := service.Handler(fstest.MapFS{"index.html": {Data: []byte("场景页面")}})
+	handler := service.Handler(fstest.MapFS{"index.html": {Data: []byte("场景页面")}}, testBrowser(t))
 	server := httptest.NewServer(handler)
 	defer server.Close()
 	request := func(method, url, body string) *httptest.ResponseRecorder {
@@ -205,13 +205,13 @@ func TestWorldChunks(t *testing.T) {
 	if err = source.Close(); err != nil {
 		t.Fatal(err)
 	}
-	service := New(nil, nil)
+	service := New(testWorlds(t), nil, nil)
 	defer service.Close()
 	info, err := service.Open(context.Background(), OpenOptions{Path: path})
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(service.Handler(fstest.MapFS{}))
+	server := httptest.NewServer(service.Handler(fstest.MapFS{}, testBrowser(t)))
 	defer server.Close()
 	client, _, err := dialWorld(t, server, info.ID)
 	if err != nil {
@@ -271,9 +271,9 @@ func TestWorldChunks(t *testing.T) {
 
 // 内置场景与存档走同一条 R2Link 路径，关闭后只更换会话编号，不改变场景内容。
 func TestMobiusSession(t *testing.T) {
-	service := New(nil, nil)
+	service := New(testWorlds(t), nil, nil)
 	defer service.Close()
-	handler := service.Handler(fstest.MapFS{})
+	handler := service.Handler(fstest.MapFS{}, testBrowser(t))
 	server := httptest.NewServer(handler)
 	defer server.Close()
 	request := func(url string) *httptest.ResponseRecorder {

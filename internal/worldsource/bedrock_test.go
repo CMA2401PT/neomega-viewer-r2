@@ -39,7 +39,7 @@ func TestBedrockDimensionsAndFix(t *testing.T) {
 	}
 	for dim := int32(0); dim < 3; dim++ {
 		for _, skip := range []bool{false, true} {
-			world, err := Open(context.Background(), Options{
+			world, err := testWorlds(t).Open(context.Background(), Options{
 				Options:        worldinput.Options{Path: path, Dimension: strconv.Itoa(int(dim))},
 				SkipBedrockFix: skip,
 			})

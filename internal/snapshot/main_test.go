@@ -42,7 +42,7 @@ func TestStructureWithCustomTemplate(t *testing.T) {
 	if err := os.WriteFile(template, []byte("<main>"+worldMarker+"</main>"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := Run(context.Background(), []string{"-template", template, path}); err != nil {
+	if err := Run(context.Background(), []string{"-template", template, path}, testWorlds(t), testPlayer(t)); err != nil {
 		t.Fatal(err)
 	}
 	out := filepath.Join(dir, "wide.html")
@@ -86,7 +86,7 @@ func TestStructureWithCustomTemplate(t *testing.T) {
 	if err := os.WriteFile(path, []byte("invalid nbt"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := Run(context.Background(), []string{"-o", out, path}); err == nil {
+	if err := Run(context.Background(), []string{"-o", out, path}, testWorlds(t), testPlayer(t)); err == nil {
 		t.Fatal("损坏输入应报告错误")
 	}
 	after, err := os.ReadFile(out)
@@ -100,7 +100,7 @@ func TestDefaultTemplateIncludesOfflinePlayer(t *testing.T) {
 		t.Fatal("内置模板的注入标记不完整")
 	}
 	for _, id := range []string{"r2-resources", "view", "teleport"} {
-		if !strings.Contains(player, `id="`+id+`"`) {
+		if !strings.Contains(testPlayer(t), `id="`+id+`"`) {
 			t.Fatalf("内嵌播放器缺少 %s", id)
 		}
 	}
@@ -131,7 +131,7 @@ func TestBedrockDimensionsAndNegativeChunks(t *testing.T) {
 		regions   int
 	}{{"", 2}, {"2", 1}} {
 		var html bytes.Buffer
-		if err := writeWorld(context.Background(), &html, dir, "Bedrock", tc.dimension); err != nil {
+		if err := writeWorld(context.Background(), &html, dir, "Bedrock", tc.dimension, testWorlds(t)); err != nil {
 			t.Fatal(err)
 		}
 		if got := strings.Count(html.String(), `data-r2-region="-2/-1"`); got != tc.regions {

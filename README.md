@@ -173,7 +173,7 @@ go run ./examples/java-source -world /path/to/world
 | `neomega-r2/r2-core`                    | 纯离屏 WebGPU 射线渲染核心（RGB/Depth 输出、拾取）、世界会话与 `MemoryWorld`。 |
 | `neomega-r2/r2-link`                    | 浏览器端 `R2Link` WebSocket 数据源客户端。                                     |
 | `neomega-r2/assets-utils`               | 生成默认材质包与合成信息包，并提供浏览器端材质解压与编译（`neomega-r2-materials`）。 |
-| `neomega-r2/r2-frontend`                | 单画布后处理合成管线（降噪、WebSR、深度叠加）与共享查看界面；`embed.go` 嵌入精简产物。 |
+| `neomega-r2/r2-frontend`                | 单画布后处理合成管线（降噪、WebSR、深度叠加）与共享查看界面；Viewer 的 `make web` 负责装配网页，由服务端嵌入。 |
 | `neomega-r2link`                        | R2Link 协议、Go 数据源会话、effector 与 block actor。                          |
 
 本应用通过 converter 组合 [fix-utils](https://github.com/CMA2401PT/neomega-r2/blob/main/fix-utils/README.md)。核心 neomega-r2 保持独立，通过数据源接收 Java 状态的方块哈希。远景与近景使用同一份来源索引，但 NBT 外观与特效仅由近景对象接口处理。
@@ -185,6 +185,22 @@ Go 入口 `cmd/viewer/main.go` 选择需要启用的 effector 和 block actor �
 附魔台的活动书已通过这条链路接入。block actor 的处理器和传输接口已连通，并通过携带 NBT 的测试处理器验证；旗帜图案、告示牌排版等具体实现尚未添加。详细契约和新增实现的方法见 [核心说明](https://github.com/CMA2401PT/neomega-r2/blob/main/r2-core/README.md#区域编码与活动对象)。含水方块暂只显示本体，不显示附加水层。
 
 区域池预留 256 MiB，缩小视距回收池内地址，切换场景时释放旧池，并为新来源重新建立池。远景半径超过 48 时，密集存档可能超出容量，此时会显示错误，可降低远景视距。文件会话按相机流式读取固定内容，查看磁盘上的外部修改需重新打开。
+
+## 更换发布资源的版本
+
+Viewer 入口把存档转换和邻接修复交给数据源，把默认材质和配方交给 HTTP 服务。导出 HTML 时使用同一包里的默认材质。浏览器脚本由 `make web` 单独编译。
+
+在应用目录修改 [resources/versions.json](resources/versions.json)，然后运行以下命令。生成需要 Python 3.9 或以上、uv、Go 和 curl，以及工作区中的 neomega-blocks、neomega-converter-core 和 neomega-r2。浏览器材质生成还需要 Node.js 24。首次生成会下载选定版本的客户端和上游数据。
+
+```sh
+npm ci --prefix ../../neomega-r2
+go generate ./resources
+make build
+```
+
+`blocks.java` 同时选择 Java 方块状态和客户端模型，`blocks.bedrock` 选择 Bedrock 方块状态。`mappings` 单独锁定非方块数据的版本、上游提交和输入文件。换非方块版本时，按[转换库的版本说明](../../neomega-converter-core/resourcegen/README.md#选择版本)选择受支持的数据和规则。存档写出格式由转换代码决定。
+
+[生成脚本](resources/generate.py)在临时目录生成整套数据，全部成功后一次替换 `resources/minecraft.zip`。下次编译就会嵌入新包。只构建和运行现有发布版本时可以直接使用随源码提供的包。
 
 ## 从源码构建
 

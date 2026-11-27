@@ -65,12 +65,12 @@ func writeBlock(w io.Writer, attributes string, data []byte) error {
 	return err
 }
 
-func writeWorld(ctx context.Context, w io.Writer, path, name, selected string) error {
+func writeWorld(ctx context.Context, w io.Writer, path, name, selected string, worlds worldsource.Opener) error {
 	meta := manifest{Version: 1, Name: name}
 	dimensions := []string{selected}
 	for n := 0; n < len(dimensions); n++ {
 		options := worldsource.Options{Options: worldinput.Options{Path: path, Dimension: dimensions[n]}}
-		world, err := worldsource.Open(ctx, options)
+		world, err := worlds.Open(ctx, options)
 		if err != nil {
 			return err
 		}

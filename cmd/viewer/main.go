@@ -12,11 +12,14 @@ import (
 	app "neomega-viewer-r2"
 	"neomega-viewer-r2/internal/server"
 	"neomega-viewer-r2/internal/snapshot"
+	"neomega-viewer-r2/internal/worldsource"
+	"neomega-viewer-r2/resources"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"slices"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -35,12 +38,7 @@ func main() {
 func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if len(os.Args) > 1 && os.Args[1] == "export" {
-		if err := snapshot.Run(ctx, os.Args[2:]); err != flag.ErrHelp {
-			return err
-		}
-		return nil
-	}
+	exporting := len(os.Args) > 1 && os.Args[1] == "export"
 	listen := flag.String("listen", "0.0.0.0:2412", "监听地址")
 	world := flag.String("world", "", "启动时打开 Java、Bedrock、PackFS 或结构文件，留空显示 Möbius")
 	dimension := flag.String("dimension", "", "Java 维度目录或 Bedrock 维度 0/1/2，默认主世界")
@@ -49,15 +47,37 @@ func run() error {
 	structureWorkers := flag.Int("structure-workers", 0, "结构写出并发上限，0 自动选择")
 	webPath := flag.String("web", "", "开发时读取应用网页目录")
 	showVersion := flag.Bool("version", false, "打印版本号后退出")
-	flag.Parse()
+	if !exporting {
+		flag.Parse()
+	}
 	if *showVersion {
 		fmt.Println(version)
+		return nil
+	}
+	release, err := resources.Open()
+	if err != nil {
+		return err
+	}
+	worlds := worldsource.Opener{Tables: release.Tables, Fixer: sync.OnceValues(release.Fixer)}
+	archive, recipe, err := release.Materials()
+	if err != nil {
+		return err
+	}
+	player, err := snapshot.Player(archive)
+	if err != nil {
+		return err
+	}
+	if exporting {
+		if err := snapshot.Run(ctx, os.Args[2:], worlds, player); err != flag.ErrHelp {
+			return err
+		}
 		return nil
 	}
 	colored := terminalColors()
 	printBanner(os.Stdout, version, colored)
 	// 新的特效和 NBT 方块处理器在这里显式组装，核心不决定应用启用哪些内容。
 	service := server.New(
+		worlds,
 		effector.Registry{"minecraft:enchanting_table": effector.Kind("enchanting_book")},
 		blockactor.Registry{},
 	)
@@ -70,6 +90,10 @@ func run() error {
 		}
 	}
 	web, err := fs.Sub(app.Web, "web")
+	if err != nil {
+		return err
+	}
+	modules, err := fs.Sub(web, "dist/r2")
 	if err != nil {
 		return err
 	}
@@ -86,7 +110,7 @@ func run() error {
 		return err
 	}
 	httpServer := &http.Server{
-		Handler:           service.Handler(web),
+		Handler:           service.Handler(web, server.BrowserFiles{Modules: modules, Materials: archive, Recipe: recipe, ExportTemplate: snapshot.Template(player)}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	done := make(chan error, 1)

@@ -41,7 +41,7 @@ func TestWorldPaletteTransport(t *testing.T) {
 	if err = source.Close(); err != nil {
 		t.Fatal(err)
 	}
-	world, err := Open(context.Background(), Options{Options: worldinput.Options{Path: path}})
+	world, err := testWorlds(t).Open(context.Background(), Options{Options: worldinput.Options{Path: path}})
 	if err != nil {
 		t.Fatal(err)
 	}

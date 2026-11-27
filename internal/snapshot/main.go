@@ -5,9 +5,12 @@ import (
 	"bufio"
 	"context"
 	_ "embed"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"neomega-view-utils/r2assets"
+	"neomega-viewer-r2/internal/worldsource"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,16 +23,45 @@ import (
 var defaultTemplate string
 
 //go:embed web/dist/player.html
-var player string
+var playerHTML string
 
 const worldMarker = "<!-- R2_WORLD -->"
 const viewerMarker = "<!-- R2_VIEWER -->"
 
+// Player 把本次发布选定的默认材质注入离线播放器，命令行和网页导出使用相同的内容。
+func Player(archive *r2assets.Archive) (string, error) {
+	entries, err := archive.ReadDir("assets")
+	if err != nil {
+		return "", err
+	}
+	files := make(map[string][]byte)
+	for _, entry := range entries {
+		name := entry.Name()
+		isModel := strings.HasSuffix(name, ".bin") && !strings.HasPrefix(name, "base-")
+		if !isModel && name != "catalog.json" && name != "textures-info.json" {
+			continue
+		}
+		gzip, _, err := archive.OpenGzip("assets/" + name)
+		if err != nil {
+			return "", err
+		}
+		files[name], err = io.ReadAll(gzip)
+		if err != nil {
+			return "", err
+		}
+	}
+	encoded, err := json.Marshal(files)
+	if err != nil {
+		return "", err
+	}
+	return strings.Replace(playerHTML, "<!-- R2_MATERIALS -->", string(encoded), 1), nil
+}
+
 // Template 为 HUD 下载提供与命令行相同的离线播放器。
-func Template() string { return strings.Replace(defaultTemplate, viewerMarker, player, 1) }
+func Template(player string) string { return strings.Replace(defaultTemplate, viewerMarker, player, 1) }
 
 // Run 执行 viewer export 子命令。
-func Run(ctx context.Context, args []string) error {
+func Run(ctx context.Context, args []string, worlds worldsource.Opener, player string) error {
 	flags := flag.NewFlagSet("viewer export", flag.ContinueOnError)
 	output := flags.String("o", "", "输出 HTML 路径，默认为输入旁的同名 .html")
 	custom := flags.String("template", "", "模板 HTML 路径，默认使用内嵌模板")
@@ -87,7 +119,11 @@ func Run(ctx context.Context, args []string) error {
 		}
 		defer os.RemoveAll(temp)
 		fmt.Fprintln(os.Stderr, "正在转换结构…")
-		result, err := structure.ConvertFile(ctx, source, filepath.Join(temp, "world"))
+		rules, err := worlds.Tables.Structure()
+		if err != nil {
+			return err
+		}
+		result, err := structure.ConvertFile(ctx, rules, source, filepath.Join(temp, "world"))
 		if err != nil {
 			return err
 		}
@@ -104,7 +140,7 @@ func Run(ctx context.Context, args []string) error {
 	if _, err := io.WriteString(writer, strings.Replace(before, viewerMarker, player, 1)); err != nil {
 		return err
 	}
-	if err := writeWorld(ctx, writer, source, name, *dimension); err != nil {
+	if err := writeWorld(ctx, writer, source, name, *dimension, worlds); err != nil {
 		return err
 	}
 	if _, err := io.WriteString(writer, strings.Replace(after, viewerMarker, player, 1)); err != nil {

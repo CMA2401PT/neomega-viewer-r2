@@ -3,8 +3,8 @@ import { createRequire } from "node:module";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gzipSync } from "node:zlib";
-import { defaultAssets } from "../../../../../neomega-r2/assets-utils/scripts/default-assets.mjs";
+
+
 import { websrModels } from "../../../../../neomega-r2/r2-frontend/scripts/websr-models.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -12,7 +12,9 @@ const r2Root = fileURLToPath(new URL("../../../../../neomega-r2/", import.meta.u
 const coreDist = join(r2Root, "r2-core/dist");
 const assetsDist = join(r2Root, "assets-utils/dist");
 const frontendDist = join(r2Root, "r2-frontend/dist");
-const { build } = createRequire(join(r2Root, "package.json"))("esbuild");
+const require = createRequire(join(r2Root, "package.json"));
+const { build } = require("esbuild");
+
 
 const shaderFiles = readdirSync(join(coreDist, "render")).filter((name) => name.endsWith(".wgsl"));
 const shaders = Object.fromEntries(shaderFiles.map((name) => [name, readFileSync(join(coreDist, "render", name), "utf8")]));
@@ -48,14 +50,6 @@ const main = (await build({
   }],
 })).outputFiles[0].text;
 
-const resources = {};
-for (const entry of defaultAssets.getEntries()) {
-  const file = entry.name;
-  if ((!file.startsWith("base-") && file.endsWith(".bin")) || ["catalog.json", "textures-info.json"].includes(file)) {
-    resources[file] = gzipSync(entry.getData()).toString("base64");
-  }
-}
-
 const uiDir = join(r2Root, "r2-frontend/src/ui");
 const styleCSS = readFileSync(join(uiDir, "style.css"), "utf8");
 const actions = '<select id="export-dimension" aria-label="维度" hidden></select>';
@@ -65,7 +59,7 @@ const layout = readFileSync(join(uiDir, "layout.html"), "utf8")
 
 const player = `<style>${styleCSS}</style>
 ${layout}
-<script type="application/json" id="r2-resources">${JSON.stringify(resources)}</script>
+<script type="application/json" id="r2-resources"><!-- R2_MATERIALS --></script>
 <script type="module">${main}</script>`;
 mkdirSync(join(here, "dist"), { recursive: true });
 writeFileSync(join(here, "dist/player.html"), player);

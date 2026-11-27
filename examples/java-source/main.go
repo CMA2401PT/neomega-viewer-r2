@@ -8,6 +8,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"neomega-blocks/blockconv"
+	"neomega-viewer-r2/resources"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,7 +20,7 @@ import (
 	"celler/java"
 	"celler/layer_storage"
 	"neomega-converter-core/worldinput"
-	"neomega-r2link"
+	r2link "neomega-r2link"
 )
 
 func main() {
@@ -30,7 +32,11 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	input, err := worldinput.Open(ctx, worldinput.Options{Path: *path, Dimension: *dimension})
+	release, err := resources.Open()
+	if err != nil {
+		log.Fatal(err)
+	}
+	input, err := worldinput.Open(ctx, release.Tables.Schema, release.Tables.Structure, worldinput.Options{Path: *path, Dimension: *dimension})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -38,7 +44,11 @@ func main() {
 	if input.Java == nil {
 		log.Fatal("java-source 使用 Java 世界或 PackFS")
 	}
-	source := &javaSource{reader: input.Java}
+	schema, err := release.Tables.Schema()
+	if err != nil {
+		log.Fatal(err)
+	}
+	source := &javaSource{reader: input.Java, schema: schema}
 	spawn := r2link.Camera{Position: input.Info.Position}
 	options := r2link.Options{Scene: r2link.Scene{Name: input.Info.Name}, Camera: &spawn}
 
@@ -80,6 +90,7 @@ func main() {
 
 // javaSource 实现 r2link.Source 与 r2link.ChunkSource；不提供近景对象。
 type javaSource struct {
+	schema blockconv.Schema
 	reader *worldinput.JavaReader
 }
 
@@ -136,7 +147,7 @@ func (s *javaSource) read(ctx context.Context, pos celler.ChunkPos) (*java.Chunk
 	if err != nil {
 		return nil, err
 	}
-	return java.DecodeChunk(raw)
+	return java.DecodeChunk(raw, s.schema)
 }
 
 // Chunks 给地图提供区块占用表。
