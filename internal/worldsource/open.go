@@ -8,13 +8,16 @@ import (
 	"io/fs"
 	"neomega-converter-core/conversiondata"
 	fixer "neomega-view-utils/fixer/java-postprocess"
+	"slices"
 
 	"celler"
 	"celler/java"
 	converter "neomega-converter-core"
+	"neomega-converter-core/be2je/actors"
 	"neomega-converter-core/be2je/adapt"
 	"neomega-converter-core/worldinput"
 	fixedadapt "neomega-converter/adapt"
+	nbt "neomega-nbt/presets/v1"
 
 	"neomega-viewer-r2/internal/worlddata"
 )
@@ -51,6 +54,25 @@ func (o Opener) Open(ctx context.Context, options Options) (*World, error) {
 			return nil, err
 		}
 		output.ScanChunks = input.Java.Chunks
+		output.ReadEntities = func(ctx context.Context, pos celler.ChunkPos) ([]nbt.Compound, error) {
+			records, err := input.Java.Read(ctx, pos)
+			if err != nil {
+				return nil, err
+			}
+			record := records[1]
+			// 旧存档把 Entities 保存于地形记录，独立实体记录优先。
+			if record == nil {
+				record = records[0]
+			}
+			if record == nil {
+				return nil, nil
+			}
+			raw, err := record.Decode()
+			if err != nil {
+				return nil, err
+			}
+			return java.DecodeEntities(raw)
+		}
 		readJava := func(ctx context.Context, pos celler.ChunkPos) (*java.Chunk, error) {
 			records, err := input.Java.Read(ctx, pos)
 			if err != nil || records[0] == nil {
@@ -123,6 +145,24 @@ func (o Opener) Open(ctx context.Context, options Options) (*World, error) {
 			return nil, err
 		}
 		converted := adapt.NewConverted(rules, reads.Read, adapt.Options{})
+		output.ReadEntities = func(ctx context.Context, pos celler.ChunkPos) ([]nbt.Compound, error) {
+			chunk, err := converted.Chunk(ctx, pos)
+			if err != nil || chunk == nil {
+				return nil, err
+			}
+			// 较新版存档将活动实体独立存储，只在近景订阅中读取。
+			extra, err := reads.ReadActors(ctx, pos)
+			if err != nil || len(extra) == 0 {
+				return chunk.Entities, err
+			}
+			entities := slices.Clone(chunk.Entities)
+			for _, raw := range extra {
+				if entity, _ := actors.Convert(rules.Entities, rules.Items, raw); entity != nil {
+					entities = append(entities, entity)
+				}
+			}
+			return entities, nil
+		}
 		var chunks adapt.ChunkSource = converted
 		if !options.SkipBedrockFix {
 			f, err := o.Fixer()

@@ -9,11 +9,13 @@ import (
 	"celler"
 	"celler/java"
 	converter "neomega-converter-core"
+	nbt "neomega-nbt/presets/v1"
 	"neomega-r2link"
 )
 
 // World 将不同来源的 Java 区块变成同一种区域，保持压缩索引和近景方块实体共用状态。
 type World struct {
+	ReadEntities      func(context.Context, celler.ChunkPos) ([]nbt.Compound, error)
 	ReadBlockEntities func(context.Context, celler.ChunkPos) ([]java.BlockEntity, error)
 	ReadChunk         func(context.Context, celler.ChunkPos) (*converter.JavaChunk, error)
 	ScanChunks        func(context.Context) ([]celler.ChunkPos, error)

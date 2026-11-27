@@ -391,6 +391,17 @@ func (l *linkSource) BlockEntities(ctx context.Context, x, z int, center [3]int,
 	return entities, err
 }
 
+// Entities 复用当前世界的读取生命周期，内置纯方块场景返回空快照。
+func (l *linkSource) Entities(ctx context.Context, x, z int, center [3]int, radius int) (entries []string, err error) {
+	err = l.read(ctx, func() error {
+		if provider, ok := l.session.source.(r2link.EntitySource); ok {
+			entries, err = provider.Entities(ctx, x, z, center, radius)
+		}
+		return err
+	})
+	return entries, err
+}
+
 // Chunks 的会话缓存独立于区域 LRU，地图在同一会话内只需扫描一次占用表。
 func (l *linkSource) Chunks(ctx context.Context) (index r2link.ChunkIndex, err error) {
 	current := l.session
